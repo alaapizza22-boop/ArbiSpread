@@ -10,7 +10,7 @@ import kotlinx.coroutines.coroutineScope
 class PriceRepository(private val coins: List<CoinDef>) {
 
     /**
-     * بيسحب الأسعار من المنصات الست بالتوازي، وبعدين يبني قايمة النتائج
+     * بيسحب الأسعار من المنصات الخمس (كلها بأزواج USDT) بالتوازي، وبعدين يبني قايمة النتائج
      * (أرخص سعر / أغلى سعر / الفرق / الربح الصافي) لكل عملة.
      */
     suspend fun refreshAll(fees: FeeConfig): List<CoinSpreadResult> = coroutineScope {
@@ -19,16 +19,12 @@ class PriceRepository(private val coins: List<CoinDef>) {
         val okxDeferred = async { ExchangeClients.fetchOkx() }
         val kucoinDeferred = async { ExchangeClients.fetchKucoin() }
         val gateioDeferred = async { ExchangeClients.fetchGateio() }
-        val coinbaseDeferred = async {
-            ExchangeClients.fetchCoinbase(coins.mapNotNull { it.coinbaseProductId })
-        }
 
         val binance = binanceDeferred.await()
         val bybit = bybitDeferred.await()
         val okx = okxDeferred.await()
         val kucoin = kucoinDeferred.await()
         val gateio = gateioDeferred.await()
-        val coinbase = coinbaseDeferred.await()
 
         coins.map { coin ->
             val quotes = buildList {
@@ -46,11 +42,6 @@ class PriceRepository(private val coins: List<CoinDef>) {
                 }
                 gateio[coin.gateioSymbol]?.let {
                     add(ExchangeQuote("Gate.io", it, fees.gateio, fees.withdrawalFeeUsd))
-                }
-                coin.coinbaseProductId?.let { productId ->
-                    coinbase[productId]?.let {
-                        add(ExchangeQuote("Coinbase", it, fees.coinbase, fees.withdrawalFeeUsd))
-                    }
                 }
             }
 

@@ -2,8 +2,6 @@ package com.arbispread.app.data
 
 import com.arbispread.app.model.FundingQuote
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -114,32 +112,6 @@ object ExchangeClients {
                 if (pair.isNotEmpty() && price != null) result[pair] = price
             }
         } catch (_: Exception) { }
-        result
-    }
-
-    /**
-     * Coinbase مفيهاش endpoint واحد بيرجع كل الأسعار دفعة واحدة بسهولة،
-     * فبنعمل طلب منفصل لكل عملة مطلوبة بالتوازي (مرة كل فترة تحديث).
-     */
-    suspend fun fetchCoinbase(productIds: List<String>): Map<String, Double> = coroutineScope {
-        val deferredList = productIds.map { productId ->
-            async(Dispatchers.IO) {
-                val body = get("https://api.exchange.coinbase.com/products/$productId/ticker")
-                val price = body?.let {
-                    try {
-                        JSONObject(it).optString("price").toDoubleOrNull()
-                    } catch (_: Exception) {
-                        null
-                    }
-                }
-                productId to price
-            }
-        }
-        val result = HashMap<String, Double>()
-        deferredList.forEach { deferred ->
-            val (id, price) = deferred.await()
-            if (price != null) result[id] = price
-        }
         result
     }
 

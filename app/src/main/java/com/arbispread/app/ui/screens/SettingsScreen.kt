@@ -44,7 +44,6 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
     var okx by remember { mutableStateOf(initial.okx.toString()) }
     var kucoin by remember { mutableStateOf(initial.kucoin.toString()) }
     var gateio by remember { mutableStateOf(initial.gateio.toString()) }
-    var coinbase by remember { mutableStateOf(initial.coinbase.toString()) }
     var withdrawalFee by remember { mutableStateOf(initial.withdrawalFeeUsd.toString()) }
 
     Scaffold(
@@ -79,7 +78,6 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
             FeeField("OKX", okx) { okx = it }
             FeeField("KuCoin", kucoin) { kucoin = it }
             FeeField("Gate.io", gateio) { gateio = it }
-            FeeField("Coinbase", coinbase) { coinbase = it }
             FeeField(Strings.t("withdrawal_fee"), withdrawalFee) { withdrawalFee = it }
 
             Button(
@@ -90,7 +88,6 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                         okx = okx.toDoubleOrNull() ?: initial.okx,
                         kucoin = kucoin.toDoubleOrNull() ?: initial.kucoin,
                         gateio = gateio.toDoubleOrNull() ?: initial.gateio,
-                        coinbase = coinbase.toDoubleOrNull() ?: initial.coinbase,
                         withdrawalFeeUsd = withdrawalFee.toDoubleOrNull() ?: initial.withdrawalFeeUsd,
                     )
                     FeeConfig.save(context, config)

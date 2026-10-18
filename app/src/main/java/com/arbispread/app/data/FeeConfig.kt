@@ -14,7 +14,6 @@ data class FeeConfig(
     var okx: Double = 0.10,
     var kucoin: Double = 0.10,
     var gateio: Double = 0.20,
-    var coinbase: Double = 0.60,
     var withdrawalFeeUsd: Double = 2.0,
 ) {
     fun feeFor(exchangeName: String): Double = when (exchangeName) {
@@ -23,7 +22,6 @@ data class FeeConfig(
         "OKX" -> okx
         "KuCoin" -> kucoin
         "Gate.io" -> gateio
-        "Coinbase" -> coinbase
         else -> 0.1
     }
 
@@ -38,7 +36,6 @@ data class FeeConfig(
                 okx = prefs.getFloat("fee_okx", 0.10f).toDouble(),
                 kucoin = prefs.getFloat("fee_kucoin", 0.10f).toDouble(),
                 gateio = prefs.getFloat("fee_gateio", 0.20f).toDouble(),
-                coinbase = prefs.getFloat("fee_coinbase", 0.60f).toDouble(),
                 withdrawalFeeUsd = prefs.getFloat("fee_withdrawal_usd", 2.0f).toDouble(),
             )
         }
@@ -51,7 +48,6 @@ data class FeeConfig(
                 .putFloat("fee_okx", config.okx.toFloat())
                 .putFloat("fee_kucoin", config.kucoin.toFloat())
                 .putFloat("fee_gateio", config.gateio.toFloat())
-                .putFloat("fee_coinbase", config.coinbase.toFloat())
                 .putFloat("fee_withdrawal_usd", config.withdrawalFeeUsd.toFloat())
                 .apply()
         }
