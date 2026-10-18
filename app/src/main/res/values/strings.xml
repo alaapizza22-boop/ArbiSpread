@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">آربي سبريد</string>
+    <string name="home_title">آربي سبريد</string>
+    <string name="subtitle">فروق الأسعار بين المنصات لحظياً</string>
+
+    <string name="buy_from">الشراء من</string>
+    <string name="sell_on">البيع في</string>
+    <string name="spread_label">الفرق</string>
+    <string name="net_profit_label">الربح الصافي بعد العمولات</string>
+    <string name="updated_ago">آخر تحديث: منذ %1$d ث</string>
+    <string name="loading">جاري السحب من المنصات…</string>
+    <string name="unavailable">بيانات غير متاحة حالياً</string>
+
+    <string name="locked_title">مقفول</string>
+    <string name="unlock_cta">شاهد إعلان لفتح باقي العملات</string>
+    <string name="unlocked_msg">تم فتح جميع العملات لهذه الجلسة</string>
+
+    <string name="settings_title">إعدادات العمولات</string>
+    <string name="fee_hint">عمولة التداول (%) لكل منصة — عدّلها حسب مستوى حسابك</string>
+    <string name="save">حفظ</string>
+
+    <string name="admob_banner_id">ca-app-pub-3940256099942544/9214589741</string>
+    <string name="admob_rewarded_id">ca-app-pub-3940256099942544/5224354917</string>
+</resources>
