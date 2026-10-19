@@ -6,16 +6,23 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.arbispread.app.model.ExchangeLinks
 import com.arbispread.app.model.FundingOpportunity
 import com.arbispread.app.ui.Strings
 import com.arbispread.app.ui.theme.AccentCyan
@@ -74,6 +81,9 @@ fun FundingOpportunityCard(opportunity: FundingOpportunity, capitalUsd: Double, 
 
             val long = opportunity.longExchange!!
             val short = opportunity.shortExchange!!
+            val uriHandler = LocalUriHandler.current
+            val longUrl = ExchangeLinks.futuresTradeUrl(long.exchangeName, opportunity.coin.id)
+            val shortUrl = ExchangeLinks.futuresTradeUrl(short.exchangeName, opportunity.coin.id)
 
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
@@ -81,7 +91,19 @@ fun FundingOpportunityCard(opportunity: FundingOpportunity, capitalUsd: Double, 
             ) {
                 Column {
                     Text(Strings.t("long_on"), style = MaterialTheme.typography.labelMedium, color = TextSecondary)
-                    Text(long.exchangeName, style = MaterialTheme.typography.titleMedium, color = ProfitGreen, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(long.exchangeName, style = MaterialTheme.typography.titleMedium, color = ProfitGreen, fontWeight = FontWeight.Bold)
+                        if (longUrl != null) {
+                            IconButton(onClick = { uriHandler.openUri(longUrl) }, modifier = Modifier.size(28.dp)) {
+                                Icon(
+                                    Icons.Filled.OpenInNew,
+                                    contentDescription = Strings.t("open_exchange") + " " + long.exchangeName,
+                                    tint = AccentCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
                     Text(
                         String.format(Locale.US, "%.4f", long.fundingRatePercent) + "%",
                         style = MaterialTheme.typography.bodyMedium
@@ -90,7 +112,19 @@ fun FundingOpportunityCard(opportunity: FundingOpportunity, capitalUsd: Double, 
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(Strings.t("short_on"), style = MaterialTheme.typography.labelMedium, color = TextSecondary)
-                    Text(short.exchangeName, style = MaterialTheme.typography.titleMedium, color = LossRed, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (shortUrl != null) {
+                            IconButton(onClick = { uriHandler.openUri(shortUrl) }, modifier = Modifier.size(28.dp)) {
+                                Icon(
+                                    Icons.Filled.OpenInNew,
+                                    contentDescription = Strings.t("open_exchange") + " " + short.exchangeName,
+                                    tint = AccentCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                        Text(short.exchangeName, style = MaterialTheme.typography.titleMedium, color = LossRed, fontWeight = FontWeight.Bold)
+                    }
                     Text(
                         String.format(Locale.US, "%.4f", short.fundingRatePercent) + "%",
                         style = MaterialTheme.typography.bodyMedium

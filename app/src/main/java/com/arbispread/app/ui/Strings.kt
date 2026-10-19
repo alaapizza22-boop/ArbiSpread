@@ -33,8 +33,9 @@ object Strings {
         "funding_rate" to "معدل الفاندينج",
         "next_funding" to "السداد القادم",
         "save" to "حفظ",
-        "withdrawal_fee" to "عمولة سحب الشبكة التقديرية ($)",
-        "fee_settings_desc" to "عمولة التداول (%) لكل منصة — عدّلها حسب مستوى حسابك الحقيقي",
+        "withdrawal_fee" to "عمولة سحب احتياطية للعملات غير المدرجة ($)",
+        "withdrawal_fee_hint" to "بتتستخدم بس لو العملة مش موجودة في جدول الرسوم المرجعي (شوف WithdrawalFees.kt) — افتراضياً صفر، يعني مفيش خصم وهمي لحد ما تحدد رقم حقيقي بنفسك",
+        "fee_settings_desc" to "عمولة التداول (%) الفعلية لكل منصة (القيم الافتراضية هي السعر المعياري المنشور رسمياً للمستخدم العادي) — عدّلها لو عندك مستوى VIP أو خصم مختلف",
         "back" to "رجوع",
         "lang_toggle" to "EN",
         "buy_from" to "اشترِ من",
@@ -44,6 +45,12 @@ object Strings {
         "est_daily_funding_profit" to "ربح الفاندينج المتوقع يومياً",
         "no_data" to "بيانات غير متاحة حالياً",
         "net_profit_usd" to "صافي الربح بالدولار",
+        "network_label" to "الشبكة",
+        "open_exchange" to "افتح في",
+        "gross_profit" to "الربح الخام",
+        "buy_fee" to "عمولة الشراء",
+        "sell_fee" to "عمولة البيع",
+        "withdrawal_fee_short" to "عمولة السحب",
     )
 
     private val en = mapOf(
@@ -64,8 +71,9 @@ object Strings {
         "funding_rate" to "Funding Rate",
         "next_funding" to "Next Funding",
         "save" to "Save",
-        "withdrawal_fee" to "Estimated Network Withdrawal Fee ($)",
-        "fee_settings_desc" to "Trading fee (%) per exchange — adjust to your real tier",
+        "withdrawal_fee" to "Fallback withdrawal fee for unlisted coins ($)",
+        "withdrawal_fee_hint" to "Only used when the coin isn't in the reference fee table (see WithdrawalFees.kt) — defaults to zero, so no fake deduction until you set a real number",
+        "fee_settings_desc" to "Real spot taker fee (%) per exchange (defaults are the officially published standard rate) — adjust if you have a VIP tier or token discount",
         "back" to "Back",
         "lang_toggle" to "AR",
         "buy_from" to "Buy from",
@@ -75,6 +83,12 @@ object Strings {
         "est_daily_funding_profit" to "Est. daily funding profit",
         "no_data" to "No data available right now",
         "net_profit_usd" to "Net Profit ($)",
+        "network_label" to "Network",
+        "open_exchange" to "Open in",
+        "gross_profit" to "Gross profit",
+        "buy_fee" to "Buy fee",
+        "sell_fee" to "Sell fee",
+        "withdrawal_fee_short" to "Withdrawal fee",
     )
 
     fun t(key: String): String {

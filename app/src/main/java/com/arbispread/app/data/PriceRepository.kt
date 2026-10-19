@@ -4,6 +4,7 @@ import com.arbispread.app.model.CoinDef
 import com.arbispread.app.model.CoinSpreadResult
 import com.arbispread.app.model.ExchangeQuote
 import com.arbispread.app.model.FundingOpportunity
+import com.arbispread.app.model.WithdrawalFees
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -27,21 +28,32 @@ class PriceRepository(private val coins: List<CoinDef>) {
         val gateio = gateioDeferred.await()
 
         coins.map { coin ->
+            /**
+             * رسوم السحب لكل Quote بتتحسب كالتالي:
+             * 1. لو العملة موجودة في جدول [WithdrawalFees] المرجعي -> بتتحسب بالدولار
+             *    فعلياً من (الرسم بوحدة العملة × السعر الحي على المنصة دي بالظبط).
+             * 2. لو مش موجودة -> بترجع null من estimateUsd، فنستخدم القيمة اليدوية
+             *    العامة من الإعدادات (fees.withdrawalFeeUsd، افتراضياً صفر - مفيش خصم
+             *    وهمي لحد ما المستخدم يدخل رقم حقيقي بنفسه).
+             */
+            fun withdrawalFeeFor(price: Double): Double =
+                WithdrawalFees.estimateUsd(coin.id, price) ?: fees.withdrawalFeeUsd
+
             val quotes = buildList {
                 binance[coin.binanceSymbol]?.let {
-                    add(ExchangeQuote("Binance", it, fees.binance, fees.withdrawalFeeUsd))
+                    add(ExchangeQuote("Binance", it, fees.binance, withdrawalFeeFor(it)))
                 }
                 bybit[coin.bybitSymbol]?.let {
-                    add(ExchangeQuote("Bybit", it, fees.bybit, fees.withdrawalFeeUsd))
+                    add(ExchangeQuote("Bybit", it, fees.bybit, withdrawalFeeFor(it)))
                 }
                 okx[coin.okxInstId]?.let {
-                    add(ExchangeQuote("OKX", it, fees.okx, fees.withdrawalFeeUsd))
+                    add(ExchangeQuote("OKX", it, fees.okx, withdrawalFeeFor(it)))
                 }
                 kucoin[coin.kucoinSymbol]?.let {
-                    add(ExchangeQuote("KuCoin", it, fees.kucoin, fees.withdrawalFeeUsd))
+                    add(ExchangeQuote("KuCoin", it, fees.kucoin, withdrawalFeeFor(it)))
                 }
                 gateio[coin.gateioSymbol]?.let {
-                    add(ExchangeQuote("Gate.io", it, fees.gateio, fees.withdrawalFeeUsd))
+                    add(ExchangeQuote("Gate.io", it, fees.gateio, withdrawalFeeFor(it)))
                 }
             }
 

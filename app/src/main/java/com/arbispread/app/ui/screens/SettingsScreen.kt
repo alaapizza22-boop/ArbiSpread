@@ -78,7 +78,13 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
             FeeField("OKX", okx) { okx = it }
             FeeField("KuCoin", kucoin) { kucoin = it }
             FeeField("Gate.io", gateio) { gateio = it }
+
             FeeField(Strings.t("withdrawal_fee"), withdrawalFee) { withdrawalFee = it }
+            Text(
+                Strings.t("withdrawal_fee_hint"),
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary
+            )
 
             Button(
                 onClick = {

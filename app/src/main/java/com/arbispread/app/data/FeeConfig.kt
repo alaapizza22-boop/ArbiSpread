@@ -3,10 +3,24 @@ package com.arbispread.app.data
 import android.content.Context
 
 /**
- * نسب عمولة التداول (Taker Fee تقريبية) لكل منصة + عمولة سحب الشبكة التقديرية بالدولار.
- * دي قيم افتراضية شائعة - المستخدم يقدر يعدّلها من شاشة الإعدادات
- * لأن العمولة الحقيقية بتختلف حسب مستوى حساب كل شخص (VIP tiers, خصومات توكن المنصة...)
- * وحسب الشبكة المستخدمة في السحب (TRC20 أرخص من ERC20 مثلاً).
+ * نسب عمولة التداول الفورية (Spot Taker Fee) الافتراضية (Standard/Regular tier - من غير خصم
+ * توكن المنصة زي BNB على Binance أو مستوى VIP)، كما هي منشورة رسمياً في صفحة جدول العمولات
+ * الخاصة بكل منصة وقت كتابة هذا الكود:
+ *   - Binance : 0.10% (Spot, Regular user, من غير خصم BNB)
+ *   - Bybit   : 0.10% (Spot, Regular user)
+ *   - OKX     : 0.10% (Spot, Regular/Lv.1 user)
+ *   - KuCoin  : 0.10% (Spot, Regular user)
+ *   - Gate.io : 0.20% (Spot, Regular user)
+ *
+ * ملحوظتين مهمتين لازم تكونا واضحتين:
+ * 1. العمولة الفعلية بتختلف حسب مستوى حسابك (VIP tiers حسب حجم تداولك الشهري) وخصومات
+ *    توكن المنصة - الأرقام دي هي "القيمة الافتراضية للمستخدم العادي" مش رقم مختلق، لكنها
+ *    برضه مش بالضرورة نفس رقمك أنت بالظبط. **لازم تتأكد من صفحة Fee Schedule الرسمية لحسابك
+ *    على كل منصة وتعدّل الأرقام دي من شاشة الإعدادات لو مختلفة.**
+ * 2. مفيش منصة بتسمح بسحب نسبة العمولة الشخصية لحسابك من API عام (Public API) من غير
+ *    تسجيل دخول بمفتاح API حقيقي (API Key + Secret) - وده التطبيق متعمد إنه ميطلبوش
+ *    عشان يفضل تطبيق معلوماتي بس (مش متصل بحسابك ولا بيقدر يلمس فلوسك). فالتطبيق مينفعش
+ *    "يسحب" العمولة الحقيقية تلقائياً، وده سبب تقني حقيقي مش قصور في الكود.
  */
 data class FeeConfig(
     var binance: Double = 0.10,
@@ -14,7 +28,19 @@ data class FeeConfig(
     var okx: Double = 0.10,
     var kucoin: Double = 0.10,
     var gateio: Double = 0.20,
-    var withdrawalFeeUsd: Double = 2.0,
+
+    /**
+     * عمولة سحب شبكة التحويل (Network Withdrawal Fee) بالدولار - لازم تدخلها إنت يدوياً
+     * قبل ما تعتمد على الحساب، لأنها بتختلف جذرياً حسب:
+     *   - العملة نفسها (BTC مختلفة تماماً عن USDT عن Dogecoin...)
+     *   - الشبكة اللي هتختارها للتحويل (TRC20 عادة أرخص بكتير من ERC20 لنفس العملة)
+     *   - سعر العملة وقتها (لو العمولة ثابتة بعدد من العملة، قيمتها بالدولار بتتغير مع السعر)
+     *   - ازدحام الشبكة وقت التحويل (رسوم غاز الإيثريوم مثلاً بتتضاعف في أوقات الزحمة)
+     * القيمة دي مفيش API عام بيرجّعها بدقة لحظية بدون مفتاح حساب شخصي، فالافتراضي هنا **صفر**
+     * عمداً (مش رقم مختلق زي $2) - التطبيق مش هيضيف أي خصم وهمي لحد ما تدخل الرقم الحقيقي
+     * بنفسك من صفحة السحب (Withdraw) في المنصة اللي هتحوّل منها فعلياً.
+     */
+    var withdrawalFeeUsd: Double = 0.0,
 ) {
     fun feeFor(exchangeName: String): Double = when (exchangeName) {
         "Binance" -> binance
@@ -36,7 +62,7 @@ data class FeeConfig(
                 okx = prefs.getFloat("fee_okx", 0.10f).toDouble(),
                 kucoin = prefs.getFloat("fee_kucoin", 0.10f).toDouble(),
                 gateio = prefs.getFloat("fee_gateio", 0.20f).toDouble(),
-                withdrawalFeeUsd = prefs.getFloat("fee_withdrawal_usd", 2.0f).toDouble(),
+                withdrawalFeeUsd = prefs.getFloat("fee_withdrawal_usd", 0.0f).toDouble(),
             )
         }
 

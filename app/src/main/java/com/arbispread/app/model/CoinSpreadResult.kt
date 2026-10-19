@@ -1,12 +1,39 @@
 package com.arbispread.app.model
 
-/** سعر عملة على منصة واحدة، مع عمولة التداول وعمولة سحب الشبكة التقديرية */
+/** سعر عملة على منصة واحدة، مع عمولة التداول وعمولة سحب الشبكة اللي المستخدم أدخلها فعلياً */
 data class ExchangeQuote(
     val exchangeName: String,
     val price: Double,
     val takerFeePercent: Double,
     val withdrawalFeeUsd: Double,
 )
+
+/**
+ * تفصيل الحساب بالدولار خطوة بخطوة - كل رقم فيه قابل للتدقيق يدوياً بالآلة الحاسبة،
+ * عشان ميبقاش فيه أي "رقم من عندنا" غير واضح من فين جه.
+ *
+ * المعادلة بالكامل:
+ *   grossProfitUsd  = رأس المال × فرق السعر% ÷ 100
+ *   buyFeeUsd       = رأس المال × عمولة التداول في منصة الشراء% ÷ 100
+ *   sellFeeUsd      = رأس المال × عمولة التداول في منصة البيع% ÷ 100
+ *   withdrawalFeeUsd = الرقم اللي إنت أدخلته بنفسك في الإعدادات (مش تقدير عشوائي)
+ *   netProfitUsd    = grossProfitUsd − buyFeeUsd − sellFeeUsd − withdrawalFeeUsd
+ */
+data class FeeBreakdown(
+    val capitalUsd: Double,
+    val spreadPercent: Double,
+    val grossProfitUsd: Double,
+    val buyFeePercent: Double,
+    val buyFeeUsd: Double,
+    val sellFeePercent: Double,
+    val sellFeeUsd: Double,
+    val withdrawalFeeUsd: Double,
+    val netProfitUsd: Double,
+) {
+    /** صافي الربح كنسبة مئوية من رأس المال - محسوبة من الدولار الصافي، مش العكس */
+    val netProfitPercent: Double
+        get() = if (capitalUsd > 0.0) (netProfitUsd / capitalUsd) * 100.0 else 0.0
+}
 
 /** نتيجة المقارنة النهائية لعملة واحدة عبر كل المنصات */
 data class CoinSpreadResult(
@@ -41,32 +68,41 @@ data class CoinSpreadResult(
         }
 
     /**
-     * صافي الربح كنسبة مئوية (مش بالدولار)، بعد خصم:
-     * - عمولة الشراء (Taker) على منصة الشراء
-     * - عمولة البيع (Taker) على منصة البيع
-     * - عمولة سحب الشبكة لتحويل العملة بين المنصتين، معبّر عنها كنسبة من رأس المال المدخل
-     * معادلة صافي الربح بالدولار = رأس المال × (هذه النسبة ÷ 100) — شوف [netProfitUsd].
-     * بترجع null لو البيانات مش متاحة أو الفرق غير منطقي (شوف [isAvailable]).
+     * تفصيل الحساب بالدولار كامل وشفاف - دي المصدر الوحيد للحقيقة (Single Source of Truth)
+     * لأي رقم ربح بيظهر في الواجهة. راجع توثيق [FeeBreakdown] فوق للمعادلة بالظبط.
+     * بترجع null لو البيانات مش متاحة، الفرق غير منطقي، أو رأس المال صفر/سالب.
      */
-    fun netProfitPercent(capitalUsd: Double): Double? {
+    fun feeBreakdown(capitalUsd: Double): FeeBreakdown? {
         if (!isAvailable) return null
+        if (capitalUsd <= 0.0) return null
         val spread = spreadPercent ?: return null
         val b = buy ?: return null
         val s = sell ?: return null
-        val tradingFees = b.takerFeePercent + s.takerFeePercent
-        val withdrawalPercent = if (capitalUsd > 0.0) (b.withdrawalFeeUsd / capitalUsd) * 100.0 else 0.0
-        return spread - tradingFees - withdrawalPercent
+
+        val grossProfitUsd = capitalUsd * spread / 100.0
+        val buyFeeUsd = capitalUsd * b.takerFeePercent / 100.0
+        val sellFeeUsd = capitalUsd * s.takerFeePercent / 100.0
+        val withdrawalFeeUsd = b.withdrawalFeeUsd
+        val netProfitUsd = grossProfitUsd - buyFeeUsd - sellFeeUsd - withdrawalFeeUsd
+
+        return FeeBreakdown(
+            capitalUsd = capitalUsd,
+            spreadPercent = spread,
+            grossProfitUsd = grossProfitUsd,
+            buyFeePercent = b.takerFeePercent,
+            buyFeeUsd = buyFeeUsd,
+            sellFeePercent = s.takerFeePercent,
+            sellFeeUsd = sellFeeUsd,
+            withdrawalFeeUsd = withdrawalFeeUsd,
+            netProfitUsd = netProfitUsd,
+        )
     }
 
-    /**
-     * صافي الربح بالدولار = رأس المال × صافي الربح% ÷ 100.
-     * مثال للتأكيد: رأس مال $100 وصافي ربح 2% => 100 × 2 ÷ 100 = $2 بالظبط (مش آلاف الدولارات).
-     * القيمة دي أصلاً بترجع null لو [netProfitPercent] رجعت null (بيانات غير متاحة/غير منطقية).
-     */
-    fun netProfitUsd(capitalUsd: Double): Double? {
-        val netPercent = netProfitPercent(capitalUsd) ?: return null
-        return capitalUsd * netPercent / 100.0
-    }
+    /** صافي الربح بالدولار = [feeBreakdown] . netProfitUsd */
+    fun netProfitUsd(capitalUsd: Double): Double? = feeBreakdown(capitalUsd)?.netProfitUsd
+
+    /** صافي الربح كنسبة مئوية من رأس المال = [feeBreakdown] . netProfitPercent */
+    fun netProfitPercent(capitalUsd: Double): Double? = feeBreakdown(capitalUsd)?.netProfitPercent
 
     companion object {
         /** أقصى فرق سعر منطقي بين منصتين (Spot/Spot) بالنسبة المئوية - أي فرق أكبر منه يتم إلغاؤه كبيانات غير موثوقة */
