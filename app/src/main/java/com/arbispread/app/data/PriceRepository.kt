@@ -31,29 +31,32 @@ class PriceRepository(private val coins: List<CoinDef>) {
             /**
              * رسوم السحب لكل Quote بتتحسب كالتالي:
              * 1. لو العملة موجودة في جدول [WithdrawalFees] المرجعي -> بتتحسب بالدولار
-             *    فعلياً من (الرسم بوحدة العملة × السعر الحي على المنصة دي بالظبط).
+             *    فعلياً من (الرسم بوحدة العملة × السعر الحي على المنصة دي بالظبط)، وتتعلّم
+             *    "محقق" (isWithdrawalFeeVerified = true).
              * 2. لو مش موجودة -> بترجع null من estimateUsd، فنستخدم القيمة اليدوية
-             *    العامة من الإعدادات (fees.withdrawalFeeUsd، افتراضياً صفر - مفيش خصم
-             *    وهمي لحد ما المستخدم يدخل رقم حقيقي بنفسه).
+             *    العامة من الإعدادات (fees.withdrawalFeeUsd، افتراضياً صفر)، وتتعلّم
+             *    "غير محقق" (isWithdrawalFeeVerified = false) - عشان الواجهة تعرض تحذير
+             *    صريح بدل ما تتعامل مع الرقم ده كأنه مؤكد.
              */
+            val isVerified = WithdrawalFees.hasReferenceFee(coin.id)
             fun withdrawalFeeFor(price: Double): Double =
                 WithdrawalFees.estimateUsd(coin.id, price) ?: fees.withdrawalFeeUsd
 
             val quotes = buildList {
                 binance[coin.binanceSymbol]?.let {
-                    add(ExchangeQuote("Binance", it, fees.binance, withdrawalFeeFor(it)))
+                    add(ExchangeQuote("Binance", it, fees.binance, withdrawalFeeFor(it), isVerified))
                 }
                 bybit[coin.bybitSymbol]?.let {
-                    add(ExchangeQuote("Bybit", it, fees.bybit, withdrawalFeeFor(it)))
+                    add(ExchangeQuote("Bybit", it, fees.bybit, withdrawalFeeFor(it), isVerified))
                 }
                 okx[coin.okxInstId]?.let {
-                    add(ExchangeQuote("OKX", it, fees.okx, withdrawalFeeFor(it)))
+                    add(ExchangeQuote("OKX", it, fees.okx, withdrawalFeeFor(it), isVerified))
                 }
                 kucoin[coin.kucoinSymbol]?.let {
-                    add(ExchangeQuote("KuCoin", it, fees.kucoin, withdrawalFeeFor(it)))
+                    add(ExchangeQuote("KuCoin", it, fees.kucoin, withdrawalFeeFor(it), isVerified))
                 }
                 gateio[coin.gateioSymbol]?.let {
-                    add(ExchangeQuote("Gate.io", it, fees.gateio, withdrawalFeeFor(it)))
+                    add(ExchangeQuote("Gate.io", it, fees.gateio, withdrawalFeeFor(it), isVerified))
                 }
             }
 

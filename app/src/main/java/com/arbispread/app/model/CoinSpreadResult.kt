@@ -6,6 +6,13 @@ data class ExchangeQuote(
     val price: Double,
     val takerFeePercent: Double,
     val withdrawalFeeUsd: Double,
+    /**
+     * true لو withdrawalFeeUsd جاي من جدول [WithdrawalFees] المرجعي (رسم حقيقي بوحدة
+     * العملة × السعر الحي). false لو جاي من القيمة اليدوية العامة في الإعدادات (غير
+     * محقق لهذه العملة بالذات) - الواجهة لازم تعرض تحذير صريح في الحالة دي، مش تعامله
+     * كأنه رقم مؤكد.
+     */
+    val isWithdrawalFeeVerified: Boolean,
 )
 
 /**
@@ -28,6 +35,7 @@ data class FeeBreakdown(
     val sellFeePercent: Double,
     val sellFeeUsd: Double,
     val withdrawalFeeUsd: Double,
+    val isWithdrawalFeeVerified: Boolean,
     val netProfitUsd: Double,
 ) {
     /** صافي الربح كنسبة مئوية من رأس المال - محسوبة من الدولار الصافي، مش العكس */
@@ -94,6 +102,7 @@ data class CoinSpreadResult(
             sellFeePercent = s.takerFeePercent,
             sellFeeUsd = sellFeeUsd,
             withdrawalFeeUsd = withdrawalFeeUsd,
+            isWithdrawalFeeVerified = b.isWithdrawalFeeVerified,
             netProfitUsd = netProfitUsd,
         )
     }

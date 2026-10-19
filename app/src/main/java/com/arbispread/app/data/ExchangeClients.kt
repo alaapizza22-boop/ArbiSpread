@@ -1,6 +1,10 @@
 package com.arbispread.app.data
 
+import com.arbispread.app.model.CoinDef
 import com.arbispread.app.model.FundingQuote
+import com.arbispread.app.model.OrderBookLevel
+import com.arbispread.app.model.OrderBookSnapshot
+import com.arbispread.app.model.WalletNetworkStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -113,6 +117,150 @@ object ExchangeClients {
             }
         } catch (_: Exception) { }
         result
+    }
+
+    // ---------------------------------------------------------------------
+    // عمق دفتر الطلبات (Order Book Depth) - بيتسحب عند الطلب بس (مش كل تحديث)
+    // عشان ميتجاوزش حدود الطلبات (Rate Limits) بتاعة المنصات. كل دالة بترجع
+    // لقطة حية فعلية وقت الاستدعاء، أو null لو فشل الطلب (من غير بيانات وهمية بديلة).
+    // ---------------------------------------------------------------------
+
+    private fun parseLevels(arr: JSONArray?): List<OrderBookLevel> {
+        if (arr == null) return emptyList()
+        val list = ArrayList<OrderBookLevel>(arr.length())
+        for (i in 0 until arr.length()) {
+            val level = arr.optJSONArray(i) ?: continue
+            val price = level.optString(0).toDoubleOrNull() ?: continue
+            val qty = level.optString(1).toDoubleOrNull() ?: continue
+            list.add(OrderBookLevel(price, qty))
+        }
+        return list
+    }
+
+    suspend fun fetchBinanceDepth(symbol: String): OrderBookSnapshot? = withContext(Dispatchers.IO) {
+        val body = get("https://api.binance.com/api/v3/depth?symbol=$symbol&limit=100") ?: return@withContext null
+        try {
+            val root = JSONObject(body)
+            OrderBookSnapshot(
+                exchangeName = "Binance",
+                asks = parseLevels(root.optJSONArray("asks")),
+                bids = parseLevels(root.optJSONArray("bids")),
+                fetchedAtMillis = System.currentTimeMillis(),
+            )
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun fetchBybitDepth(symbol: String): OrderBookSnapshot? = withContext(Dispatchers.IO) {
+        val body = get("https://api.bybit.com/v5/market/orderbook?category=spot&symbol=$symbol&limit=50") ?: return@withContext null
+        try {
+            val result = JSONObject(body).getJSONObject("result")
+            OrderBookSnapshot(
+                exchangeName = "Bybit",
+                asks = parseLevels(result.optJSONArray("a")),
+                bids = parseLevels(result.optJSONArray("b")),
+                fetchedAtMillis = System.currentTimeMillis(),
+            )
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun fetchOkxDepth(instId: String): OrderBookSnapshot? = withContext(Dispatchers.IO) {
+        val body = get("https://www.okx.com/api/v5/market/books?instId=$instId&sz=50") ?: return@withContext null
+        try {
+            val entry = JSONObject(body).getJSONArray("data").getJSONObject(0)
+            OrderBookSnapshot(
+                exchangeName = "OKX",
+                asks = parseLevels(entry.optJSONArray("asks")),
+                bids = parseLevels(entry.optJSONArray("bids")),
+                fetchedAtMillis = System.currentTimeMillis(),
+            )
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun fetchKucoinDepth(symbol: String): OrderBookSnapshot? = withContext(Dispatchers.IO) {
+        val body = get("https://api.kucoin.com/api/v1/market/orderbook/level2_20?symbol=$symbol") ?: return@withContext null
+        try {
+            val data = JSONObject(body).getJSONObject("data")
+            OrderBookSnapshot(
+                exchangeName = "KuCoin",
+                asks = parseLevels(data.optJSONArray("asks")),
+                bids = parseLevels(data.optJSONArray("bids")),
+                fetchedAtMillis = System.currentTimeMillis(),
+            )
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun fetchGateioDepth(pair: String): OrderBookSnapshot? = withContext(Dispatchers.IO) {
+        val body = get("https://api.gateio.ws/api/v4/spot/order_book?currency_pair=$pair&limit=50") ?: return@withContext null
+        try {
+            val root = JSONObject(body)
+            OrderBookSnapshot(
+                exchangeName = "Gate.io",
+                asks = parseLevels(root.optJSONArray("asks")),
+                bids = parseLevels(root.optJSONArray("bids")),
+                fetchedAtMillis = System.currentTimeMillis(),
+            )
+        } catch (_: Exception) { null }
+    }
+
+    /** بيرجّع دالة فحص العمق الصحيحة حسب اسم المنصة - أداة مساعدة لتوحيد الاستدعاء في LiquidityRepository */
+    suspend fun fetchDepthFor(exchangeName: String, coin: CoinDef): OrderBookSnapshot? = when (exchangeName) {
+        "Binance" -> fetchBinanceDepth(coin.binanceSymbol)
+        "Bybit" -> fetchBybitDepth(coin.bybitSymbol)
+        "OKX" -> fetchOkxDepth(coin.okxInstId)
+        "KuCoin" -> fetchKucoinDepth(coin.kucoinSymbol)
+        "Gate.io" -> fetchGateioDepth(coin.gateioSymbol)
+        else -> null
+    }
+
+    // ---------------------------------------------------------------------
+    // حالة الإيداع/السحب (Wallet Network Status)
+    // **تنبيه صريح**: Binance و Bybit و OKX ماعندهمش Endpoint عام (من غير مفتاح API
+    // شخصي موقّع) بيرجّع حالة الإيداع/السحب الفعلية - دي بيانات محتاجة توثيق بحسابك،
+    // والتطبيق متعمد إنه ميطلبش مفتاح منك عشان يفضل بعيد عن حسابك وفلوسك. فبالنسبالهم
+    // التطبيق بيرجّع isVerifiable=false (مش "متاح" ولا "موقوف" - ببساطة "مش معروف").
+    // KuCoin و Gate.io بس عندهم Endpoint عام حقيقي، فبيترجعلهم isVerifiable=true.
+    // ---------------------------------------------------------------------
+
+    suspend fun fetchKucoinWalletStatus(currencyCode: String): WalletNetworkStatus? = withContext(Dispatchers.IO) {
+        val body = get("https://api.kucoin.com/api/v1/currencies/$currencyCode") ?: return@withContext null
+        try {
+            val data = JSONObject(body).getJSONObject("data")
+            WalletNetworkStatus(
+                exchangeName = "KuCoin",
+                depositEnabled = data.optBoolean("isDepositEnabled", true),
+                withdrawEnabled = data.optBoolean("isWithdrawEnabled", true),
+                isVerifiable = true,
+            )
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun fetchGateioWalletStatus(currencyCode: String): WalletNetworkStatus? = withContext(Dispatchers.IO) {
+        val body = get("https://api.gateio.ws/api/v4/wallet/currency_chains?currency=$currencyCode") ?: return@withContext null
+        try {
+            val arr = JSONArray(body)
+            if (arr.length() == 0) return@withContext null
+            // لو أي شبكة من شبكات العملة شغالة، نعتبر الإيداع/السحب متاح عموماً على المنصة
+            var depositEnabled = false
+            var withdrawEnabled = false
+            for (i in 0 until arr.length()) {
+                val chain = arr.getJSONObject(i)
+                if (!chain.optBoolean("is_deposit_disabled", false)) depositEnabled = true
+                if (!chain.optBoolean("is_withdraw_disabled", false)) withdrawEnabled = true
+            }
+            WalletNetworkStatus(
+                exchangeName = "Gate.io",
+                depositEnabled = depositEnabled,
+                withdrawEnabled = withdrawEnabled,
+                isVerifiable = true,
+            )
+        } catch (_: Exception) { null }
+    }
+
+    /** بيرجّع دالة فحص حالة المحفظة الصحيحة حسب اسم المنصة - أو null (غير قابل للتحقق) للمنصات الثلاث التانية */
+    suspend fun fetchWalletStatusFor(exchangeName: String, coinId: String): WalletNetworkStatus? = when (exchangeName) {
+        "KuCoin" -> fetchKucoinWalletStatus(coinId)
+        "Gate.io" -> fetchGateioWalletStatus(coinId)
+        else -> null // Binance/Bybit/OKX: مفيش Endpoint عام - التطبيق بيوضح كده صراحة في الواجهة بدل ما يفترض "متاح"
     }
 
     // ---------------------------------------------------------------------

@@ -16,6 +16,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -26,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +49,7 @@ import com.arbispread.app.ui.theme.BorderSubtle
 import com.arbispread.app.ui.theme.LossRed
 import com.arbispread.app.ui.theme.ProfitGreen
 import com.arbispread.app.ui.theme.TextSecondary
+import com.arbispread.app.ui.theme.WarnAmber
 import java.util.Locale
 import kotlin.math.abs
 
@@ -55,6 +60,7 @@ fun CoinSpreadCard(result: CoinSpreadResult, capitalUsd: Double, modifier: Modif
     val netUsd = breakdown?.netProfitUsd
     val isProfit = (netPercent ?: 0.0) > 0.0
     val accent = if (!result.isAvailable) TextSecondary else if (isProfit) ProfitGreen else LossRed
+    var showLiquidityDialog by remember { mutableStateOf(false) }
 
     // أنيميشن بسيط للنسبة وقت ما تتحدّث، عشان الواجهة تحس إنها "حيّة"
     var displayedNet by remember { mutableFloatStateOf(netPercent?.toFloat() ?: 0f) }
@@ -166,6 +172,40 @@ fun CoinSpreadCard(result: CoinSpreadResult, capitalUsd: Double, modifier: Modif
                     color = accent,
                     modifier = Modifier.padding(top = 6.dp)
                 )
+
+                // تحذير صريح لو عمولة السحب المستخدمة في الحساب مش رقم محقق لهذه العملة بالذات
+                if (!breakdown.isWithdrawalFeeVerified) {
+                    Text(
+                        text = Strings.t("fee_not_verified_badge") + " " + Strings.t("fee_not_verified_warning"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = WarnAmber,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+
+                // زرار فحص السيولة الحية وحالة المحافظ - بيتسحب عند الطلب بس (مش تلقائي لكل عملة)
+                Button(
+                    onClick = { showLiquidityDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = BgCard, contentColor = AccentCyan),
+                    border = BorderStroke(1.dp, AccentCyan),
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+                ) {
+                    Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text(
+                        Strings.t("liquidity_check_cta"),
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+
+                if (showLiquidityDialog) {
+                    LiquidityCheckDialog(
+                        coin = result.coin,
+                        buyExchange = result.buy!!.exchangeName,
+                        sellExchange = result.sell!!.exchangeName,
+                        onDismiss = { showLiquidityDialog = false }
+                    )
+                }
             }
         }
     }
