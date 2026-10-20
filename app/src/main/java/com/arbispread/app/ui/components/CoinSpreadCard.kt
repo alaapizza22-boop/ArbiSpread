@@ -172,20 +172,6 @@ fun CoinSpreadCard(result: CoinSpreadResult, capitalUsd: Double, modifier: Modif
                     modifier = Modifier.padding(top = 6.dp)
                 )
 
-                // ملاحظات شفافية ثابتة توضح أساس الحساب - عشان المستخدم يقرأ الرقم صح
-                Text(
-                    text = Strings.t("spot_fee_assumption_note"),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-                Text(
-                    text = Strings.t("spot_no_funding_note"),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-
                 // زرار فحص السيولة الحية وحالة المحافظ - بيتسحب عند الطلب بس (مش تلقائي لكل عملة)
                 Button(
                     onClick = { showLiquidityDialog = true },
