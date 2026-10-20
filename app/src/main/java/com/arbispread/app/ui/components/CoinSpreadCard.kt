@@ -49,7 +49,6 @@ import com.arbispread.app.ui.theme.BorderSubtle
 import com.arbispread.app.ui.theme.LossRed
 import com.arbispread.app.ui.theme.ProfitGreen
 import com.arbispread.app.ui.theme.TextSecondary
-import com.arbispread.app.ui.theme.WarnAmber
 import java.util.Locale
 import kotlin.math.abs
 
@@ -186,16 +185,6 @@ fun CoinSpreadCard(result: CoinSpreadResult, capitalUsd: Double, modifier: Modif
                     color = TextSecondary,
                     modifier = Modifier.padding(top = 2.dp)
                 )
-
-                // تحذير صريح لو عمولة السحب المستخدمة في الحساب مش رقم محقق لهذه العملة بالذات
-                if (!breakdown.isWithdrawalFeeVerified) {
-                    Text(
-                        text = Strings.t("fee_not_verified_badge") + " " + Strings.t("fee_not_verified_warning"),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = WarnAmber,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
 
                 // زرار فحص السيولة الحية وحالة المحافظ - بيتسحب عند الطلب بس (مش تلقائي لكل عملة)
                 Button(
