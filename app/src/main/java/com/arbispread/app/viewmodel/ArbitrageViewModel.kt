@@ -23,7 +23,7 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var feeConfig: FeeConfig = FeeConfig.load(application)
 
-    private val _uiState = MutableStateFlow(ArbitrageUiState())
+    private val _uiState = MutableStateFlow(ArbitrageUiState(feeConfig = feeConfig))
     val uiState: StateFlow<ArbitrageUiState> = _uiState.asStateFlow()
 
     init {
@@ -73,6 +73,7 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun reloadFees() {
         feeConfig = FeeConfig.load(getApplication<Application>())
+        _uiState.update { it.copy(feeConfig = feeConfig) }
         refreshNow()
     }
 
@@ -93,4 +94,5 @@ data class ArbitrageUiState(
     val lastUpdatedAtMillis: Long = 0L,
     val capitalUsd: Double = 1000.0,
     val filterProfitableOnly: Boolean = false,
+    val feeConfig: FeeConfig = FeeConfig(),
 )

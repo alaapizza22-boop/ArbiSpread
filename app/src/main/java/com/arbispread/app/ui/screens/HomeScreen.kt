@@ -195,7 +195,12 @@ fun HomeScreen(
                     ) {
                         itemsIndexed(filteredFunding) { index, opportunity ->
                             if (index < FREE_COIN_LIMIT || state.unlockedAll) {
-                                FundingOpportunityCard(opportunity, capitalUsd = state.capitalUsd)
+                                FundingOpportunityCard(
+                                    opportunity,
+                                    capitalUsd = state.capitalUsd,
+                                    longTakerFeePercent = state.feeConfig.futuresFeeFor(opportunity.longExchange?.exchangeName ?: ""),
+                                    shortTakerFeePercent = state.feeConfig.futuresFeeFor(opportunity.shortExchange?.exchangeName ?: "")
+                                )
                             } else {
                                 LockedCoinCard(onUnlockClick = onUnlockRequested)
                             }

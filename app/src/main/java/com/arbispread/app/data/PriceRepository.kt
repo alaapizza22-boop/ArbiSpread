@@ -65,20 +65,31 @@ class PriceRepository(private val coins: List<CoinDef>) {
     }
 
     /**
-     * بيسحب معدلات الفاندينج من منصتي Binance و Bybit (فيوتشرز) بالتوازي،
-     * وبيبني فرص الفاندينج آربيتراج لكل عملة معاها بيانات من منصتين على الأقل.
+     * بيسحب معدلات الفاندينج من منصتي Binance و Bybit (فيوتشرز) بالتوازي، مع فترة
+     * السداد الحقيقية لكل رمز (مش افتراض ثابت 8 ساعات لكل العملات)، وبيبني فرص
+     * الفاندينج آربيتراج لكل عملة معاها بيانات من منصتين على الأقل.
      */
     suspend fun refreshFunding(): List<FundingOpportunity> = coroutineScope {
         val binanceDeferred = async { ExchangeClients.fetchBinanceFunding() }
         val bybitDeferred = async { ExchangeClients.fetchBybitFunding() }
+        val binanceIntervalsDeferred = async { ExchangeClients.fetchBinanceFundingIntervals() }
+        val bybitIntervalsDeferred = async { ExchangeClients.fetchBybitFundingIntervals() }
 
         val binance = binanceDeferred.await()
         val bybit = bybitDeferred.await()
+        val binanceIntervals = binanceIntervalsDeferred.await()
+        val bybitIntervals = bybitIntervalsDeferred.await()
 
         coins.map { coin ->
             val quotes = buildList {
-                binance[coin.binanceSymbol]?.let { add(it) }
-                bybit[coin.bybitSymbol]?.let { add(it) }
+                binance[coin.binanceSymbol]?.let { quote ->
+                    val realInterval = binanceIntervals[coin.binanceSymbol] ?: FundingOpportunity.DEFAULT_FUNDING_INTERVAL_HOURS
+                    add(quote.copy(fundingIntervalHours = realInterval))
+                }
+                bybit[coin.bybitSymbol]?.let { quote ->
+                    val realInterval = bybitIntervals[coin.bybitSymbol] ?: FundingOpportunity.DEFAULT_FUNDING_INTERVAL_HOURS
+                    add(quote.copy(fundingIntervalHours = realInterval))
+                }
             }
             FundingOpportunity(coin = coin, quotes = quotes)
         }

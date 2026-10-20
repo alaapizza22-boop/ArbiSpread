@@ -45,6 +45,8 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
     var kucoin by remember { mutableStateOf(initial.kucoin.toString()) }
     var gateio by remember { mutableStateOf(initial.gateio.toString()) }
     var withdrawalFee by remember { mutableStateOf(initial.withdrawalFeeUsd.toString()) }
+    var binanceFuturesTaker by remember { mutableStateOf(initial.binanceFuturesTaker.toString()) }
+    var bybitFuturesTaker by remember { mutableStateOf(initial.bybitFuturesTaker.toString()) }
 
     Scaffold(
         containerColor = BgDeep,
@@ -86,6 +88,14 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                 color = TextSecondary
             )
 
+            Text(
+                Strings.t("futures_fee_settings_desc"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+            FeeField("Binance Futures", binanceFuturesTaker) { binanceFuturesTaker = it }
+            FeeField("Bybit Futures", bybitFuturesTaker) { bybitFuturesTaker = it }
+
             Button(
                 onClick = {
                     val config = FeeConfig(
@@ -95,6 +105,8 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                         kucoin = kucoin.toDoubleOrNull() ?: initial.kucoin,
                         gateio = gateio.toDoubleOrNull() ?: initial.gateio,
                         withdrawalFeeUsd = withdrawalFee.toDoubleOrNull() ?: initial.withdrawalFeeUsd,
+                        binanceFuturesTaker = binanceFuturesTaker.toDoubleOrNull() ?: initial.binanceFuturesTaker,
+                        bybitFuturesTaker = bybitFuturesTaker.toDoubleOrNull() ?: initial.bybitFuturesTaker,
                     )
                     FeeConfig.save(context, config)
                     onSaved()

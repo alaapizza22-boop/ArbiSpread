@@ -41,6 +41,18 @@ data class FeeConfig(
      * بنفسك من صفحة السحب (Withdraw) في المنصة اللي هتحوّل منها فعلياً.
      */
     var withdrawalFeeUsd: Double = 0.0,
+
+    /**
+     * عمولة فتح/قفل مركز فيوتشرز (Taker) على Binance وBybit - مستخدمة في حساب فاندينج
+     * آربيتراج بس (مش آربيتراج السبوت). القيم الافتراضية هي السعر المعياري المنشور
+     * رسمياً للمستخدم العادي (من غير خصم توكن أو مستوى VIP) وقت كتابة الكود:
+     *   - Binance USDⓈ-M Futures : 0.05% (Taker, Regular user)
+     *   - Bybit USDT Perpetual   : 0.055% (Taker, Regular user)
+     * نفس ملاحظة عمولة السبوت: دي مش رقم مختلق، لكنها برضه مش بالضرورة رقمك بالظبط -
+     * اتأكد من صفحة الرسوم الرسمية لحسابك وعدّل لو مختلف.
+     */
+    var binanceFuturesTaker: Double = 0.05,
+    var bybitFuturesTaker: Double = 0.055,
 ) {
     fun feeFor(exchangeName: String): Double = when (exchangeName) {
         "Binance" -> binance
@@ -49,6 +61,12 @@ data class FeeConfig(
         "KuCoin" -> kucoin
         "Gate.io" -> gateio
         else -> 0.1
+    }
+
+    fun futuresFeeFor(exchangeName: String): Double = when (exchangeName) {
+        "Binance" -> binanceFuturesTaker
+        "Bybit" -> bybitFuturesTaker
+        else -> 0.05
     }
 
     companion object {
@@ -63,6 +81,8 @@ data class FeeConfig(
                 kucoin = prefs.getFloat("fee_kucoin", 0.10f).toDouble(),
                 gateio = prefs.getFloat("fee_gateio", 0.20f).toDouble(),
                 withdrawalFeeUsd = prefs.getFloat("fee_withdrawal_usd", 0.0f).toDouble(),
+                binanceFuturesTaker = prefs.getFloat("fee_binance_futures_taker", 0.05f).toDouble(),
+                bybitFuturesTaker = prefs.getFloat("fee_bybit_futures_taker", 0.055f).toDouble(),
             )
         }
 
@@ -75,6 +95,8 @@ data class FeeConfig(
                 .putFloat("fee_kucoin", config.kucoin.toFloat())
                 .putFloat("fee_gateio", config.gateio.toFloat())
                 .putFloat("fee_withdrawal_usd", config.withdrawalFeeUsd.toFloat())
+                .putFloat("fee_binance_futures_taker", config.binanceFuturesTaker.toFloat())
+                .putFloat("fee_bybit_futures_taker", config.bybitFuturesTaker.toFloat())
                 .apply()
         }
     }

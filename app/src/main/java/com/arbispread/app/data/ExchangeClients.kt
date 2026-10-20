@@ -269,7 +269,7 @@ object ExchangeClients {
     // ممكن تتوسع لاحقاً لمنصات فيوتشرز إضافية بنفس الطريقة.
     // ---------------------------------------------------------------------
 
-    /** بيرجع Map من الرمز (مثل BTCUSDT) إلى FundingQuote الخاص بـ Binance Futures */
+    /** بيرجع Map من الرمز (مثل BTCUSDT) إلى FundingQuote الخاص بـ Binance Futures - فترة السداد هنا مؤقتة (8 ساعات)، لحد ما تتدمج مع [fetchBinanceFundingIntervals] في PriceRepository */
     suspend fun fetchBinanceFunding(): Map<String, FundingQuote> = withContext(Dispatchers.IO) {
         val body = get("https://fapi.binance.com/fapi/v1/premiumIndex") ?: return@withContext emptyMap()
         val result = HashMap<String, FundingQuote>()
@@ -281,14 +281,14 @@ object ExchangeClients {
                 val rate = obj.optString("lastFundingRate").toDoubleOrNull()
                 val nextTime = obj.optLong("nextFundingTime", 0L)
                 if (symbol.isNotEmpty() && rate != null) {
-                    result[symbol] = FundingQuote("Binance", rate * 100.0, nextTime)
+                    result[symbol] = FundingQuote("Binance", rate * 100.0, nextTime, 8.0)
                 }
             }
         } catch (_: Exception) { }
         result
     }
 
-    /** بيرجع Map من الرمز (مثل BTCUSDT) إلى FundingQuote الخاص بـ Bybit Linear Futures */
+    /** بيرجع Map من الرمز (مثل BTCUSDT) إلى FundingQuote الخاص بـ Bybit Linear Futures - فترة السداد هنا مؤقتة (8 ساعات)، لحد ما تتدمج مع [fetchBybitFundingIntervals] في PriceRepository */
     suspend fun fetchBybitFunding(): Map<String, FundingQuote> = withContext(Dispatchers.IO) {
         val body = get("https://api.bybit.com/v5/market/tickers?category=linear") ?: return@withContext emptyMap()
         val result = HashMap<String, FundingQuote>()
@@ -301,7 +301,50 @@ object ExchangeClients {
                 val rate = obj.optString("fundingRate").toDoubleOrNull()
                 val nextTime = obj.optString("nextFundingTime").toLongOrNull() ?: 0L
                 if (symbol.isNotEmpty() && rate != null) {
-                    result[symbol] = FundingQuote("Bybit", rate * 100.0, nextTime)
+                    result[symbol] = FundingQuote("Bybit", rate * 100.0, nextTime, 8.0)
+                }
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
+    /**
+     * فترة السداد الحقيقية (بالساعات) لكل رمز على Binance Futures من `/fapi/v1/fundingInfo`.
+     * الرموز اللي مش موجودة في رد الـ Endpoint ده فترتها القياسية المعلنة 8 ساعات (التعامل
+     * مع الغياب ده بيحصل في PriceRepository، مش هنا).
+     */
+    suspend fun fetchBinanceFundingIntervals(): Map<String, Double> = withContext(Dispatchers.IO) {
+        val body = get("https://fapi.binance.com/fapi/v1/fundingInfo") ?: return@withContext emptyMap()
+        val result = HashMap<String, Double>()
+        try {
+            val arr = JSONArray(body)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val symbol = obj.optString("symbol")
+                val hours = obj.optDouble("fundingIntervalHours", Double.NaN)
+                if (symbol.isNotEmpty() && !hours.isNaN() && hours > 0.0) {
+                    result[symbol] = hours
+                }
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
+    /**
+     * فترة السداد الحقيقية (بالساعات) لكل رمز على Bybit Linear Futures من
+     * `/v5/market/instruments-info` (حقل fundingInterval بييجي بالدقايق، فبنحولها لساعات).
+     */
+    suspend fun fetchBybitFundingIntervals(): Map<String, Double> = withContext(Dispatchers.IO) {
+        val body = get("https://api.bybit.com/v5/market/instruments-info?category=linear") ?: return@withContext emptyMap()
+        val result = HashMap<String, Double>()
+        try {
+            val list = JSONObject(body).getJSONObject("result").getJSONArray("list")
+            for (i in 0 until list.length()) {
+                val obj = list.getJSONObject(i)
+                val symbol = obj.optString("symbol")
+                val minutes = obj.optInt("fundingInterval", -1)
+                if (symbol.isNotEmpty() && minutes > 0) {
+                    result[symbol] = minutes / 60.0
                 }
             }
         } catch (_: Exception) { }
