@@ -3,18 +3,26 @@ package com.arbispread.app.data
 import com.arbispread.app.model.CoinDef
 import com.arbispread.app.model.CoinSpreadResult
 import com.arbispread.app.model.ExchangeQuote
-import com.arbispread.app.model.FundingOpportunity
+import com.arbispread.app.model.TriangularQuotes
 import com.arbispread.app.model.WithdrawalFees
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
+/** نتيجة تحديث واحدة شاملة: مقارنة السبريد بين المنصات + فرص التداول الثلاثي داخل كل منصة - مبنيين من نفس نداء الأسعار (من غير ما نكرر طلبات الشبكة) */
+data class PriceRefreshResult(
+    val spreadResults: List<CoinSpreadResult>,
+    val triangularResults: List<TriangularQuotes>,
+)
+
 class PriceRepository(private val coins: List<CoinDef>) {
 
     /**
-     * بيسحب الأسعار من المنصات الخمس (كلها بأزواج USDT) بالتوازي، وبعدين يبني قايمة النتائج
-     * (أرخص سعر / أغلى سعر / الفرق / الربح الصافي) لكل عملة.
+     * بيسحب الأسعار من المنصات الخمس (كلها أزواج USDT) بالتوازي مرة واحدة بس، وبعدين
+     * يبني منهم (أ) مقارنة السبريد بين المنصات، و(ب) فرص التداول الثلاثي داخل كل منصة -
+     * من غير ما يكرر أي طلب شبكة إضافي، لأن كل منصة بترجّع أصلاً كل الأزواج (USDT
+     * وCross زي ETH/BTC) في نفس استجابة الـ Ticker الواحدة.
      */
-    suspend fun refreshAll(fees: FeeConfig): List<CoinSpreadResult> = coroutineScope {
+    suspend fun refreshAll(fees: FeeConfig): PriceRefreshResult = coroutineScope {
         val binanceDeferred = async { ExchangeClients.fetchBinance() }
         val bybitDeferred = async { ExchangeClients.fetchBybit() }
         val okxDeferred = async { ExchangeClients.fetchOkx() }
@@ -27,7 +35,7 @@ class PriceRepository(private val coins: List<CoinDef>) {
         val kucoin = kucoinDeferred.await()
         val gateio = gateioDeferred.await()
 
-        coins.map { coin ->
+        val spreadResults = coins.map { coin ->
             /**
              * رسوم السحب لكل Quote بتتحسب كالتالي:
              * 1. لو العملة موجودة في جدول [WithdrawalFees] المرجعي -> بتتحسب بالدولار
@@ -35,8 +43,7 @@ class PriceRepository(private val coins: List<CoinDef>) {
              *    "محقق" (isWithdrawalFeeVerified = true).
              * 2. لو مش موجودة -> بترجع null من estimateUsd، فنستخدم القيمة اليدوية
              *    العامة من الإعدادات (fees.withdrawalFeeUsd، افتراضياً صفر)، وتتعلّم
-             *    "غير محقق" (isWithdrawalFeeVerified = false) - عشان الواجهة تعرض تحذير
-             *    صريح بدل ما تتعامل مع الرقم ده كأنه مؤكد.
+             *    "غير محقق" (isWithdrawalFeeVerified = false).
              */
             val isVerified = WithdrawalFees.hasReferenceFee(coin.id)
             fun withdrawalFeeFor(price: Double): Double =
@@ -62,36 +69,46 @@ class PriceRepository(private val coins: List<CoinDef>) {
 
             CoinSpreadResult(coin = coin, quotes = quotes)
         }
+
+        val triangularResults = buildList {
+            addAll(buildTriangularForExchange("Binance", binance, fees.binance, crossSymbol = { "${it}BTC" }, usdtSymbol = { "${it}USDT" }))
+            addAll(buildTriangularForExchange("Bybit", bybit, fees.bybit, crossSymbol = { "${it}BTC" }, usdtSymbol = { "${it}USDT" }))
+            addAll(buildTriangularForExchange("OKX", okx, fees.okx, crossSymbol = { "$it-BTC" }, usdtSymbol = { "$it-USDT" }))
+            addAll(buildTriangularForExchange("KuCoin", kucoin, fees.kucoin, crossSymbol = { "$it-BTC" }, usdtSymbol = { "$it-USDT" }))
+            addAll(buildTriangularForExchange("Gate.io", gateio, fees.gateio, crossSymbol = { "${it}_BTC" }, usdtSymbol = { "${it}_USDT" }))
+        }
+
+        PriceRefreshResult(spreadResults, triangularResults)
     }
 
     /**
-     * بيسحب معدلات الفاندينج من منصتي Binance و Bybit (فيوتشرز) بالتوازي، مع فترة
-     * السداد الحقيقية لكل رمز (مش افتراض ثابت 8 ساعات لكل العملات)، وبيبني فرص
-     * الفاندينج آربيتراج لكل عملة معاها بيانات من منصتين على الأقل.
+     * بيبني فرص التداول الثلاثي لمنصة واحدة، عن طريق عملة جسر واحدة (BTC) - لأنها أكثر
+     * عملة متاحة كزوج تقاطع (Cross Pair) مع باقي العملات على الخمس منصات. لو زوج
+     * التقاطع (مثلاً ETHBTC) مش موجود فعلياً في رد الـ API لمنصة معينة، العملة دي ببساطة
+     * مش هتظهر من المنصة دي - مفيش سعر بديل مختلق.
      */
-    suspend fun refreshFunding(): List<FundingOpportunity> = coroutineScope {
-        val binanceDeferred = async { ExchangeClients.fetchBinanceFunding() }
-        val bybitDeferred = async { ExchangeClients.fetchBybitFunding() }
-        val binanceIntervalsDeferred = async { ExchangeClients.fetchBinanceFundingIntervals() }
-        val bybitIntervalsDeferred = async { ExchangeClients.fetchBybitFundingIntervals() }
-
-        val binance = binanceDeferred.await()
-        val bybit = bybitDeferred.await()
-        val binanceIntervals = binanceIntervalsDeferred.await()
-        val bybitIntervals = bybitIntervalsDeferred.await()
-
-        coins.map { coin ->
-            val quotes = buildList {
-                binance[coin.binanceSymbol]?.let { quote ->
-                    val realInterval = binanceIntervals[coin.binanceSymbol] ?: FundingOpportunity.DEFAULT_FUNDING_INTERVAL_HOURS
-                    add(quote.copy(fundingIntervalHours = realInterval))
-                }
-                bybit[coin.bybitSymbol]?.let { quote ->
-                    val realInterval = bybitIntervals[coin.bybitSymbol] ?: FundingOpportunity.DEFAULT_FUNDING_INTERVAL_HOURS
-                    add(quote.copy(fundingIntervalHours = realInterval))
-                }
-            }
-            FundingOpportunity(coin = coin, quotes = quotes)
+    private fun buildTriangularForExchange(
+        exchangeName: String,
+        prices: Map<String, Double>,
+        takerFeePercent: Double,
+        crossSymbol: (base: String) -> String,
+        usdtSymbol: (base: String) -> String,
+        bridgeCoin: String = "BTC",
+    ): List<TriangularQuotes> {
+        val bridgePrice = prices[usdtSymbol(bridgeCoin)] ?: return emptyList()
+        return coins.mapNotNull { coin ->
+            if (coin.id == bridgeCoin) return@mapNotNull null
+            val targetPrice = prices[usdtSymbol(coin.id)] ?: return@mapNotNull null
+            val crossPrice = prices[crossSymbol(coin.id)] ?: return@mapNotNull null
+            TriangularQuotes(
+                exchangeName = exchangeName,
+                bridgeCoin = bridgeCoin,
+                targetCoin = coin,
+                bridgeUsdtPrice = bridgePrice,
+                crossPrice = crossPrice,
+                targetUsdtPrice = targetPrice,
+                takerFeePercent = takerFeePercent,
+            )
         }
     }
 }

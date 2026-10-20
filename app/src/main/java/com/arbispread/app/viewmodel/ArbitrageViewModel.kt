@@ -7,7 +7,7 @@ import com.arbispread.app.data.FeeConfig
 import com.arbispread.app.data.PriceRepository
 import com.arbispread.app.model.CoinSpreadResult
 import com.arbispread.app.model.DEFAULT_COINS
-import com.arbispread.app.model.FundingOpportunity
+import com.arbispread.app.model.TriangularQuotes
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,23 +43,17 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
 
-            val results = try {
+            val refreshResult = try {
                 repository.refreshAll(feeConfig)
             } catch (e: Exception) {
-                emptyList()
-            }
-
-            val funding = try {
-                repository.refreshFunding()
-            } catch (e: Exception) {
-                emptyList()
+                null
             }
 
             _uiState.update {
                 it.copy(
                     isLoading = false,
-                    results = results,
-                    fundingResults = funding,
+                    results = refreshResult?.spreadResults ?: emptyList(),
+                    triangularResults = refreshResult?.triangularResults ?: emptyList(),
                     lastUpdatedAtMillis = System.currentTimeMillis()
                 )
             }
@@ -89,7 +83,7 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
 data class ArbitrageUiState(
     val isLoading: Boolean = true,
     val results: List<CoinSpreadResult> = emptyList(),
-    val fundingResults: List<FundingOpportunity> = emptyList(),
+    val triangularResults: List<TriangularQuotes> = emptyList(),
     val unlockedAll: Boolean = false,
     val lastUpdatedAtMillis: Long = 0L,
     val capitalUsd: Double = 1000.0,

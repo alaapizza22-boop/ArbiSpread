@@ -43,7 +43,7 @@ import com.arbispread.app.model.FREE_COIN_LIMIT
 import com.arbispread.app.ui.Strings
 import com.arbispread.app.ui.components.BannerAdView
 import com.arbispread.app.ui.components.CoinSpreadCard
-import com.arbispread.app.ui.components.FundingOpportunityCard
+import com.arbispread.app.ui.components.TriangularCard
 import com.arbispread.app.ui.components.LockedCoinCard
 import com.arbispread.app.ui.theme.AccentCyan
 import com.arbispread.app.ui.theme.BgDeep
@@ -142,7 +142,7 @@ fun HomeScreen(
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text(Strings.t("tab_funding")) }
+                    text = { Text(Strings.t("tab_triangular")) }
                 )
             }
 
@@ -183,24 +183,19 @@ fun HomeScreen(
                         }
                     }
                 } else {
-                    val filteredFunding = if (state.filterProfitableOnly) {
-                        state.fundingResults.filter { (it.estimatedDailyProfitPercent() ?: -1.0) > 0.0 }
+                    val filteredTriangular = if (state.filterProfitableOnly) {
+                        state.triangularResults.filter { it.bestFlow(state.capitalUsd.coerceAtLeast(1.0)).second.netProfitUsd > 0.0 }
                     } else {
-                        state.fundingResults
+                        state.triangularResults
                     }
 
                     LazyColumn(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        itemsIndexed(filteredFunding) { index, opportunity ->
+                        itemsIndexed(filteredTriangular) { index, quote ->
                             if (index < FREE_COIN_LIMIT || state.unlockedAll) {
-                                FundingOpportunityCard(
-                                    opportunity,
-                                    capitalUsd = state.capitalUsd,
-                                    longTakerFeePercent = state.feeConfig.futuresFeeFor(opportunity.longExchange?.exchangeName ?: ""),
-                                    shortTakerFeePercent = state.feeConfig.futuresFeeFor(opportunity.shortExchange?.exchangeName ?: "")
-                                )
+                                TriangularCard(quote, capitalUsd = state.capitalUsd)
                             } else {
                                 LockedCoinCard(onUnlockClick = onUnlockRequested)
                             }
