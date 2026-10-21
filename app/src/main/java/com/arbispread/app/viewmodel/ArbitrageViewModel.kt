@@ -3,6 +3,7 @@ package com.arbispread.app.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.arbispread.app.data.ApiKeyStore
 import com.arbispread.app.data.FeeConfig
 import com.arbispread.app.data.PriceRepository
 import com.arbispread.app.model.CoinSpreadResult
@@ -43,8 +44,13 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
 
+            // بنحمّل المفاتيح المحفوظة (لو موجودة) من التخزين المشفّر في كل تحديث - قراءة
+            // محلية خفيفة من غير أي شبكة، عشان أي تغيير يعمله المستخدم في الإعدادات ينعكس فوراً
+            val application = getApplication<Application>()
+            val apiKeys = ApiKeyStore.SUPPORTED_EXCHANGES.associateWith { ApiKeyStore.load(application, it) }
+
             val refreshResult = try {
-                repository.refreshAll(feeConfig)
+                repository.refreshAll(feeConfig, apiKeys)
             } catch (e: Exception) {
                 null
             }

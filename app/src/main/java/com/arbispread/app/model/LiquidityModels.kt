@@ -20,8 +20,12 @@ data class WalletNetworkStatus(
     val exchangeName: String,
     val depositEnabled: Boolean?,
     val withdrawEnabled: Boolean?,
-    /** true لو المنصة دي معاها Endpoint عام حقيقي بيرجّع الحالة فعلياً (KuCoin, Gate.io) */
+    /** true لو المنصة دي معاها Endpoint عام حقيقي بيرجّع الحالة فعلياً (KuCoin, Gate.io)، أو مفتاح شخصي شغال (Binance/Bybit/OKX) */
     val isVerifiable: Boolean,
+    /** اسم الشبكة الفعلي المسحوب من المنصة - null لو مش متاح */
+    val networkName: String? = null,
+    /** رسم السحب الفعلي بوحدة العملة نفسها، مسحوب حياً من المنصة - null لو مش متاح (مش صفر، عشان الواجهة تفرّق بين "صفر فعلي" و"مش معروف") */
+    val withdrawFeeNative: Double? = null,
 )
 
 /**

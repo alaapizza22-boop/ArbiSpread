@@ -17,7 +17,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.arbispread.app.data.ApiKeyStore
 import com.arbispread.app.data.LiquidityRepository
 import com.arbispread.app.model.CoinDef
 import com.arbispread.app.model.LiquidityCheckResult
@@ -41,13 +43,18 @@ fun LiquidityCheckDialog(
     sellExchange: String,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
     var result by remember { mutableStateOf<LiquidityCheckResult?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var refreshKey by remember { mutableStateOf(0) }
 
     LaunchedEffect(refreshKey) {
         isLoading = true
-        result = LiquidityRepository.checkExecution(coin, buyExchange, sellExchange)
+        // لو المستخدم مدخل مفتاحه الشخصي لمنصة الشراء/البيع (اختياري)، بيتستخدم بس
+        // لو المنصة دي معندهاش Endpoint عام أصلاً (Binance/Bybit/OKX)
+        val buyKey = ApiKeyStore.load(context, buyExchange)
+        val sellKey = ApiKeyStore.load(context, sellExchange)
+        result = LiquidityRepository.checkExecution(coin, buyExchange, sellExchange, buyApiKey = buyKey, sellApiKey = sellKey)
         isLoading = false
     }
 
@@ -133,11 +140,23 @@ private fun WalletStatusRow(exchangeName: String, status: WalletNetworkStatus?, 
         else -> Strings.t("wallet_unverifiable") to WarnAmber
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text("$exchangeName ($label)", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-        Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+    Column(modifier = Modifier.padding(vertical = 2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("$exchangeName ($label)", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            Text(text, style = MaterialTheme.typography.bodySmall, color = color)
+        }
+        // لو عندنا رسم سحب حقيقي مسحوب حياً (من Endpoint عام أو مفتاح شخصي)، نوريه هنا
+        if (!isDepositSide && status?.withdrawFeeNative != null) {
+            Text(
+                Strings.t("live_withdraw_fee_label") + " " +
+                    String.format(Locale.US, "%.8f", status.withdrawFeeNative) +
+                    (status.networkName?.let { " ($it)" } ?: ""),
+                style = MaterialTheme.typography.labelSmall,
+                color = ProfitGreen
+            )
+        }
     }
 }

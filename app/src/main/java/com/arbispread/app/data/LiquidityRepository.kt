@@ -3,6 +3,7 @@ package com.arbispread.app.data
 import com.arbispread.app.model.CoinDef
 import com.arbispread.app.model.LiquidityCheckResult
 import com.arbispread.app.model.OrderBookSnapshot
+import com.arbispread.app.model.WalletNetworkStatus
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 
@@ -21,11 +22,16 @@ object LiquidityRepository {
         buyExchange: String,
         sellExchange: String,
         maxSlippagePercent: Double = DEFAULT_MAX_SLIPPAGE_PERCENT,
+        /** مفتاح المستخدم الشخصي (لو مُدخل ومُفعّل) لمنصة الشراء/البيع - بيتستخدم بس لو
+         * المنصة دي معندهاش Endpoint عام (Binance/Bybit/OKX)، عشان نجيب حالة محفظة
+         * ورسم سحب حقيقيين بدل "غير محقق" */
+        buyApiKey: ExchangeApiKey? = null,
+        sellApiKey: ExchangeApiKey? = null,
     ): LiquidityCheckResult = coroutineScope {
         val buyDepthDeferred = async { ExchangeClients.fetchDepthFor(buyExchange, coin) }
         val sellDepthDeferred = async { ExchangeClients.fetchDepthFor(sellExchange, coin) }
-        val buyWalletDeferred = async { ExchangeClients.fetchWalletStatusFor(buyExchange, coin.id) }
-        val sellWalletDeferred = async { ExchangeClients.fetchWalletStatusFor(sellExchange, coin.id) }
+        val buyWalletDeferred = async { fetchWalletStatus(buyExchange, coin.id, buyApiKey) }
+        val sellWalletDeferred = async { fetchWalletStatus(sellExchange, coin.id, sellApiKey) }
 
         val buyDepth = buyDepthDeferred.await()
         val sellDepth = sellDepthDeferred.await()
@@ -66,6 +72,19 @@ object LiquidityRepository {
             errorMessage = null,
             checkedAtMillis = System.currentTimeMillis(),
         )
+    }
+
+    /**
+     * بيجيب حالة المحفظة: بيجرّب الـ Endpoint العام الأول (KuCoin/Gate.io) - لو موجود
+     * بيرجّعه فوراً. لو مش موجود (Binance/Bybit/OKX) وفيه مفتاح شخصي مُفعّل للمنصة دي،
+     * بيعمل نداء موقّع بمفتاح المستخدم. غير كده بترجع null ("غير قابل للتحقق").
+     */
+    private suspend fun fetchWalletStatus(exchangeName: String, coinId: String, key: ExchangeApiKey?): WalletNetworkStatus? {
+        ExchangeClients.fetchWalletStatusFor(exchangeName, coinId)?.let { return it }
+        if (key != null && key.isConfigured) {
+            return ExchangeClients.fetchWalletStatusWithKey(exchangeName, key)[coinId]
+        }
+        return null
     }
 
     /**

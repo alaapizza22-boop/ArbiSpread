@@ -37,6 +37,20 @@ object ExchangeClients {
         }
     }
 
+    /** زي [get] بالظبط بس مع هيدرز إضافية - مستخدمة في النداءات الموقّعة بمفتاح المستخدم الشخصي فقط */
+    private fun getWithHeaders(url: String, headers: Map<String, String>): String? {
+        return try {
+            val builder = Request.Builder().url(url).get()
+            headers.forEach { (k, v) -> builder.addHeader(k, v) }
+            client.newCall(builder.build()).execute().use { response ->
+                if (!response.isSuccessful) return null
+                response.body?.string()
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     // ---------------------------------------------------------------------
     // أسعار السوق الفوري (Spot)
     // ---------------------------------------------------------------------
@@ -325,15 +339,31 @@ object ExchangeClients {
     // KuCoin و Gate.io بس عندهم Endpoint عام حقيقي، فبيترجعلهم isVerifiable=true.
     // ---------------------------------------------------------------------
 
+    /**
+     * KuCoin: `/api/v1/currencies/{code}` عام بالكامل (من غير مفتاح) وبيرجّع كمان مصفوفة
+     * "chains" فيها رسم السحب الحقيقي (withdrawalMinFee) لكل شبكة - بناخد أول شبكة متاحة
+     * كممثل. لو الحقل مش موجود (رد قديم أو عملة من غير شبكات متعددة)، withdrawFeeNative
+     * بترجع null بدل ما نخترع رقم.
+     */
     suspend fun fetchKucoinWalletStatus(currencyCode: String): WalletNetworkStatus? = withContext(Dispatchers.IO) {
         val body = get("https://api.kucoin.com/api/v1/currencies/$currencyCode") ?: return@withContext null
         try {
             val data = JSONObject(body).getJSONObject("data")
+            var networkName: String? = null
+            var feeNative: Double? = null
+            val chains = data.optJSONArray("chains")
+            if (chains != null && chains.length() > 0) {
+                val chain = chains.getJSONObject(0)
+                networkName = chain.optString("chainName").takeIf { it.isNotBlank() }
+                feeNative = chain.optString("withdrawalMinFee").toDoubleOrNull()
+            }
             WalletNetworkStatus(
                 exchangeName = "KuCoin",
                 depositEnabled = data.optBoolean("isDepositEnabled", true),
                 withdrawEnabled = data.optBoolean("isWithdrawEnabled", true),
                 isVerifiable = true,
+                networkName = networkName,
+                withdrawFeeNative = feeNative,
             )
         } catch (_: Exception) { null }
     }
@@ -346,25 +376,195 @@ object ExchangeClients {
             // لو أي شبكة من شبكات العملة شغالة، نعتبر الإيداع/السحب متاح عموماً على المنصة
             var depositEnabled = false
             var withdrawEnabled = false
+            var networkName: String? = null
+            var feeNative: Double? = null
             for (i in 0 until arr.length()) {
                 val chain = arr.getJSONObject(i)
                 if (!chain.optBoolean("is_deposit_disabled", false)) depositEnabled = true
                 if (!chain.optBoolean("is_withdraw_disabled", false)) withdrawEnabled = true
+                // بناخد رسم أول شبكة واردة كممثل - الحقل أحياناً مسمى withdraw_fix_fee في رد هذا الـ Endpoint
+                if (feeNative == null) {
+                    val fee = chain.optString("withdraw_fix_fee").toDoubleOrNull()
+                    if (fee != null) {
+                        feeNative = fee
+                        networkName = chain.optString("chain").takeIf { it.isNotBlank() }
+                    }
+                }
             }
             WalletNetworkStatus(
                 exchangeName = "Gate.io",
                 depositEnabled = depositEnabled,
                 withdrawEnabled = withdrawEnabled,
                 isVerifiable = true,
+                networkName = networkName,
+                withdrawFeeNative = feeNative,
             )
         } catch (_: Exception) { null }
     }
 
-    /** بيرجّع دالة فحص حالة المحفظة الصحيحة حسب اسم المنصة - أو null (غير قابل للتحقق) للمنصات الثلاث التانية */
+    /** بيرجّع دالة فحص حالة المحفظة الصحيحة حسب اسم المنصة - أو null (غير قابل للتحقق) للمنصات الثلاث التانية لو مفيش مفتاح شخصي مُفعّل */
     suspend fun fetchWalletStatusFor(exchangeName: String, coinId: String): WalletNetworkStatus? = when (exchangeName) {
         "KuCoin" -> fetchKucoinWalletStatus(coinId)
         "Gate.io" -> fetchGateioWalletStatus(coinId)
-        else -> null // Binance/Bybit/OKX: مفيش Endpoint عام - التطبيق بيوضح كده صراحة في الواجهة بدل ما يفترض "متاح"
+        else -> null // Binance/Bybit/OKX: مفيش Endpoint عام - استخدم fetchWalletStatusWithKey لو المستخدم معاه مفتاح شخصي
+    }
+
+    // ---------------------------------------------------------------------
+    // نداءات موقّعة بمفتاح المستخدم الشخصي (Binance/Bybit/OKX) - دي المنصات الوحيدة
+    // اللي معندهاش Endpoint عام لرسوم السحب/حالة المحفظة. التوقيع هنا بيحصل محلياً على
+    // جهاز المستخدم بمفتاحه هو، ومفيش أي مفتاح أو سر بيتبعت لغير المنصة نفسها مباشرة.
+    // أي فشل (مفتاح غلط، صلاحيات ناقصة، مشكلة شبكة) بيرجع null بهدوء - التطبيق يرجع
+    // تلقائياً لنفس السلوك القديم (جدول مرجعي / "غير محقق") من غير كراش ومن غير بيانات مختلقة.
+    //
+    // ⚠️ ملحوظة صراحة: التوقيع هنا مبني على توثيق كل منصة وقت كتابة الكود، ومستحيل
+    // نختبره فعلياً من هنا (بيئة التطوير مقطوعة عن إنترنت المنصات دي بالكامل) - أول
+    // اختبار حقيقي لازم يحصل على جهاز المستخدم نفسه بمفتاحه الحقيقي.
+    // ---------------------------------------------------------------------
+
+    /** Binance: /sapi/v1/capital/config/getall - موقّع، بيرجع كل العملات في نداء واحد */
+    suspend fun fetchBinanceWithdrawalInfo(apiKey: String, secretKey: String): Map<String, WalletNetworkStatus> = withContext(Dispatchers.IO) {
+        val result = HashMap<String, WalletNetworkStatus>()
+        try {
+            val timestamp = System.currentTimeMillis()
+            val query = "timestamp=$timestamp&recvWindow=10000"
+            val signature = Signing.hmacSha256Hex(secretKey, query)
+            val url = "https://api.binance.com/sapi/v1/capital/config/getall?$query&signature=$signature"
+            val body = getWithHeaders(url, mapOf("X-MBX-APIKEY" to apiKey)) ?: return@withContext emptyMap()
+            val arr = JSONArray(body)
+            for (i in 0 until arr.length()) {
+                val coin = arr.getJSONObject(i)
+                val coinId = coin.optString("coin")
+                if (coinId.isEmpty()) continue
+                val networks = coin.optJSONArray("networkList")
+                var networkName: String? = null
+                var feeNative: Double? = null
+                var depositEnabled: Boolean? = coin.optBoolean("depositAllEnable", true)
+                var withdrawEnabled: Boolean? = coin.optBoolean("withdrawAllEnable", true)
+                if (networks != null && networks.length() > 0) {
+                    // بنفضّل الشبكة الافتراضية (isDefault) لو موجودة، وإلا أول شبكة متاحة
+                    var chosen: JSONObject? = null
+                    for (n in 0 until networks.length()) {
+                        val net = networks.getJSONObject(n)
+                        if (net.optBoolean("isDefault", false)) { chosen = net; break }
+                    }
+                    if (chosen == null) chosen = networks.getJSONObject(0)
+                    networkName = chosen.optString("network").takeIf { it.isNotBlank() }
+                    feeNative = chosen.optString("withdrawFee").toDoubleOrNull()
+                    depositEnabled = chosen.optBoolean("depositEnable", depositEnabled ?: true)
+                    withdrawEnabled = chosen.optBoolean("withdrawEnable", withdrawEnabled ?: true)
+                }
+                result[coinId] = WalletNetworkStatus(
+                    exchangeName = "Binance",
+                    depositEnabled = depositEnabled,
+                    withdrawEnabled = withdrawEnabled,
+                    isVerifiable = true,
+                    networkName = networkName,
+                    withdrawFeeNative = feeNative,
+                )
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
+    /** Bybit v5: /v5/asset/coin/query-info - موقّع، بيرجع كل العملات في نداء واحد */
+    suspend fun fetchBybitWithdrawalInfo(apiKey: String, secretKey: String): Map<String, WalletNetworkStatus> = withContext(Dispatchers.IO) {
+        val result = HashMap<String, WalletNetworkStatus>()
+        try {
+            val timestamp = System.currentTimeMillis().toString()
+            val recvWindow = "10000"
+            val queryString = ""
+            val signaturePayload = timestamp + apiKey + recvWindow + queryString
+            val signature = Signing.hmacSha256Hex(secretKey, signaturePayload)
+            val url = "https://api.bybit.com/v5/asset/coin/query-info"
+            val body = getWithHeaders(
+                url,
+                mapOf(
+                    "X-BAPI-API-KEY" to apiKey,
+                    "X-BAPI-TIMESTAMP" to timestamp,
+                    "X-BAPI-RECV-WINDOW" to recvWindow,
+                    "X-BAPI-SIGN" to signature,
+                )
+            ) ?: return@withContext emptyMap()
+            val rows = JSONObject(body).getJSONObject("result").getJSONArray("rows")
+            for (i in 0 until rows.length()) {
+                val row = rows.getJSONObject(i)
+                val coinId = row.optString("coin")
+                if (coinId.isEmpty()) continue
+                val chains = row.optJSONArray("chains")
+                var networkName: String? = null
+                var feeNative: Double? = null
+                var depositEnabled: Boolean? = null
+                var withdrawEnabled: Boolean? = null
+                if (chains != null && chains.length() > 0) {
+                    val chain = chains.getJSONObject(0)
+                    networkName = chain.optString("chain").takeIf { it.isNotBlank() }
+                    feeNative = chain.optString("withdrawFee").toDoubleOrNull()
+                    depositEnabled = chain.optString("chainDeposit") == "1"
+                    withdrawEnabled = chain.optString("chainWithdraw") == "1"
+                }
+                result[coinId] = WalletNetworkStatus(
+                    exchangeName = "Bybit",
+                    depositEnabled = depositEnabled,
+                    withdrawEnabled = withdrawEnabled,
+                    isVerifiable = true,
+                    networkName = networkName,
+                    withdrawFeeNative = feeNative,
+                )
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
+    /** OKX: /api/v5/asset/currencies - موقّع (محتاج Passphrase كمان)، بيرجع كل العملات في نداء واحد */
+    suspend fun fetchOkxWithdrawalInfo(apiKey: String, secretKey: String, passphrase: String): Map<String, WalletNetworkStatus> = withContext(Dispatchers.IO) {
+        val result = HashMap<String, WalletNetworkStatus>()
+        try {
+            val requestPath = "/api/v5/asset/currencies"
+            // تنسيق الوقت المطلوب من OKX: ISO 8601 بالميلي ثانية، مثل 2024-01-01T00:00:00.000Z
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+            sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            val timestamp = sdf.format(java.util.Date())
+            val signaturePayload = timestamp + "GET" + requestPath
+            val signature = Signing.hmacSha256Base64(secretKey, signaturePayload)
+            val url = "https://www.okx.com$requestPath"
+            val body = getWithHeaders(
+                url,
+                mapOf(
+                    "OK-ACCESS-KEY" to apiKey,
+                    "OK-ACCESS-SIGN" to signature,
+                    "OK-ACCESS-TIMESTAMP" to timestamp,
+                    "OK-ACCESS-PASSPHRASE" to passphrase,
+                )
+            ) ?: return@withContext emptyMap()
+            val data = JSONObject(body).getJSONArray("data")
+            for (i in 0 until data.length()) {
+                val row = data.getJSONObject(i)
+                val coinId = row.optString("ccy")
+                if (coinId.isEmpty()) continue
+                // لو العملة معاها أكتر من شبكة، كل شبكة بتيجي كصف منفصل في الرد - بناخد أول صف كممثل
+                if (result.containsKey(coinId)) continue
+                result[coinId] = WalletNetworkStatus(
+                    exchangeName = "OKX",
+                    depositEnabled = row.optBoolean("canDep", true),
+                    withdrawEnabled = row.optBoolean("canWd", true),
+                    isVerifiable = true,
+                    networkName = row.optString("chain").takeIf { it.isNotBlank() },
+                    withdrawFeeNative = row.optString("minFee").toDoubleOrNull(),
+                )
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
+    /** دالة موحّدة: بتختار النداء الصح حسب المنصة لو المستخدم معاه مفتاح شخصي مُفعّل لها */
+    suspend fun fetchWalletStatusWithKey(exchangeName: String, key: ExchangeApiKey): Map<String, WalletNetworkStatus> {
+        if (!key.isConfigured) return emptyMap()
+        return when (exchangeName) {
+            "Binance" -> fetchBinanceWithdrawalInfo(key.apiKey, key.secretKey)
+            "Bybit" -> fetchBybitWithdrawalInfo(key.apiKey, key.secretKey)
+            "OKX" -> fetchOkxWithdrawalInfo(key.apiKey, key.secretKey, key.passphrase)
+            else -> emptyMap()
+        }
     }
 
     private fun String.toDoubleOrNull(): Double? = try {
