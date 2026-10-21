@@ -5,10 +5,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -21,17 +24,23 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.arbispread.app.data.ApiKeyStore
 import com.arbispread.app.data.FeeConfig
 import com.arbispread.app.ui.Strings
 import com.arbispread.app.ui.theme.AccentCyan
+import com.arbispread.app.ui.theme.BgCard
 import com.arbispread.app.ui.theme.BgDeep
+import com.arbispread.app.ui.theme.BorderSubtle
 import com.arbispread.app.ui.theme.TextSecondary
+import com.arbispread.app.ui.theme.WarnAmber
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +56,12 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
     var withdrawalFee by remember { mutableStateOf(initial.withdrawalFeeUsd.toString()) }
     var binanceFuturesTaker by remember { mutableStateOf(initial.binanceFuturesTaker.toString()) }
     var bybitFuturesTaker by remember { mutableStateOf(initial.bybitFuturesTaker.toString()) }
+
+    // مفاتيح API شخصية اختيارية - بتتحمّل من التخزين المشفّر لو محفوظة قبل كده
+    val apiKeys = remember {
+        mutableStateListOf(*ApiKeyStore.SUPPORTED_EXCHANGES.map { ApiKeyStore.load(context, it) }.toTypedArray())
+    }
+    var apiKeysSaved by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = BgDeep,
@@ -66,7 +81,8 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(20.dp),
+                .padding(20.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
@@ -110,6 +126,68 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
             ) {
                 Text(Strings.t("save"))
             }
+
+            Divider(color = BorderSubtle, modifier = Modifier.padding(vertical = 8.dp))
+
+            Text(
+                Strings.t("api_keys_section_title"),
+                style = MaterialTheme.typography.titleMedium,
+                color = AccentCyan
+            )
+            Text(
+                Strings.t("api_keys_section_hint"),
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary
+            )
+            Text(
+                Strings.t("api_keys_not_active_yet"),
+                style = MaterialTheme.typography.labelSmall,
+                color = WarnAmber
+            )
+
+            ApiKeyStore.SUPPORTED_EXCHANGES.forEachIndexed { index, exchangeName ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(exchangeName, style = MaterialTheme.typography.titleSmall, color = AccentCyan)
+                    val current = apiKeys[index]
+                    ApiKeyField(Strings.t("api_key_label"), current.apiKey, masked = false) {
+                        apiKeys[index] = current.copy(apiKey = it)
+                    }
+                    ApiKeyField(Strings.t("secret_key_label"), current.secretKey, masked = true) {
+                        apiKeys[index] = current.copy(secretKey = it)
+                    }
+                    if (ApiKeyStore.requiresPassphrase(exchangeName)) {
+                        ApiKeyField(Strings.t("passphrase_label"), current.passphrase, masked = true) {
+                            apiKeys[index] = current.copy(passphrase = it)
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = {
+                    apiKeys.forEachIndexed { index, key ->
+                        ApiKeyStore.save(context, ApiKeyStore.SUPPORTED_EXCHANGES[index], key)
+                    }
+                    apiKeysSaved = true
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = BgCard, contentColor = AccentCyan),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(Strings.t("save_api_keys"))
+            }
+
+            if (apiKeysSaved) {
+                Text(
+                    Strings.t("api_keys_saved_confirmation"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+            }
         }
     }
 }
@@ -120,6 +198,22 @@ private fun FeeField(label: String, value: String, onChange: (String) -> Unit) {
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
+        modifier = Modifier.fillMaxWidth(),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = androidx.compose.ui.graphics.Color.White,
+            unfocusedTextColor = androidx.compose.ui.graphics.Color.White,
+        )
+    )
+}
+
+@Composable
+private fun ApiKeyField(label: String, value: String, masked: Boolean, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        singleLine = true,
+        visualTransformation = if (masked) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         modifier = Modifier.fillMaxWidth(),
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = androidx.compose.ui.graphics.Color.White,

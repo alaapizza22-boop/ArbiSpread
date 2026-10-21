@@ -29,10 +29,11 @@ import java.util.Locale
 
 @Composable
 fun TriangularCard(quote: TriangularQuotes, capitalUsd: Double, modifier: Modifier = Modifier) {
+    // ملحوظة: الفرص غير المنطقية (سبريد شاذ أو نسبة غير واقعية) بتتفلتر خالص قبل
+    // ما توصل هنا من PriceRepository - فلو الكارت ده ظاهر، البيانات موثوقة بالفعل
     val (isForward, flow) = quote.bestFlow(capitalUsd.coerceAtLeast(1.0))
-    val isPlausible = quote.isPlausible(capitalUsd.coerceAtLeast(1.0))
     val isProfit = flow.netProfitUsd > 0.0
-    val accent = if (!isPlausible) TextSecondary else if (isProfit) ProfitGreen else LossRed
+    val accent = if (isProfit) ProfitGreen else LossRed
 
     val pathText = if (isForward) {
         "USDT → ${quote.bridgeCoin} → ${quote.targetCoin.id} → USDT"
@@ -40,11 +41,22 @@ fun TriangularCard(quote: TriangularQuotes, capitalUsd: Double, modifier: Modifi
         "USDT → ${quote.targetCoin.id} → ${quote.bridgeCoin} → USDT"
     }
 
+    // أسعار Ask/Bid المستخدمة فعلياً في كل خطوة - للتحقق التقني قبل أي تنفيذ يدوي
+    val stepPricesText = if (isForward) {
+        "${quote.bridgeCoin}: Ask ${fmt(quote.bridgeBook.askPrice)} · " +
+            "${quote.targetCoin.id}/${quote.bridgeCoin}: Ask ${fmt(quote.crossBook.askPrice)} · " +
+            "${quote.targetCoin.id}: Bid ${fmt(quote.targetBook.bidPrice)}"
+    } else {
+        "${quote.targetCoin.id}: Ask ${fmt(quote.targetBook.askPrice)} · " +
+            "${quote.targetCoin.id}/${quote.bridgeCoin}: Bid ${fmt(quote.crossBook.bidPrice)} · " +
+            "${quote.bridgeCoin}: Bid ${fmt(quote.bridgeBook.bidPrice)}"
+    }
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = BgCard),
-        border = BorderStroke(1.dp, if (isProfit && isPlausible) ProfitGreen.copy(alpha = 0.5f) else BorderSubtle)
+        border = BorderStroke(1.dp, if (isProfit) ProfitGreen.copy(alpha = 0.5f) else BorderSubtle)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -64,15 +76,12 @@ fun TriangularCard(quote: TriangularQuotes, capitalUsd: Double, modifier: Modifi
                 )
             }
 
-            if (!isPlausible) {
-                Text(
-                    text = Strings.t("no_data"),
-                    color = TextSecondary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                return@Column
-            }
+            Text(
+                text = stepPricesText,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 6.dp)
+            )
 
             Divider(color = BorderSubtle, modifier = Modifier.padding(vertical = 10.dp))
 
@@ -116,4 +125,11 @@ fun TriangularCard(quote: TriangularQuotes, capitalUsd: Double, modifier: Modifi
             )
         }
     }
+}
+
+/** تنسيق سعر للعرض المختصر جوه الكارت - بدقة متغيرة حسب حجم الرقم (عملات صغيرة القيمة محتاجة خانات عشرية أكتر) */
+private fun fmt(price: Double): String = when {
+    price >= 1.0 -> String.format(Locale.US, "%.4f", price)
+    price >= 0.001 -> String.format(Locale.US, "%.6f", price)
+    else -> String.format(Locale.US, "%.8f", price)
 }

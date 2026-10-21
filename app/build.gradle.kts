@@ -70,5 +70,10 @@ dependencies {
     // AdMob
     implementation("com.google.android.gms:play-services-ads:23.1.0")
 
+    // تخزين مشفّر محلي لمفاتيح الـ API الشخصية (لو المستخدم اختار يدخلها) - كل مفتاح
+    // بيتشفّر بمفتاح مرتبط بجهاز المستخدم نفسه عن طريق Android Keystore، مش مفتاح
+    // ثابت مدمج في التطبيق، فمفيش خطر مشاركة مفتاح مستخدم واحد مع باقي المستخدمين
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
