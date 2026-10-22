@@ -1,6 +1,5 @@
 package com.arbispread.app.data
 
-import com.arbispread.app.model.BookQuote
 import com.arbispread.app.model.CoinDef
 import com.arbispread.app.model.NetworkFeeOption
 import com.arbispread.app.model.OrderBookLevel
@@ -135,110 +134,6 @@ object ExchangeClients {
     }
 
     // ---------------------------------------------------------------------
-    // أفضل سعر بيع/شراء فعلي (Best Bid/Ask) - مخصص لحساب التداول الثلاثي، عشان
-    // الحساب يبقى على سعر قابل للتنفيذ فعلياً (Ask للشراء، Bid للبيع) مش "آخر صفقة"
-    // (Last Price) اللي ممكن تبقى قديمة جداً على عملة ضعيفة السيولة وتطلّع أرقام وهمية.
-    // ---------------------------------------------------------------------
-
-    /** Binance: /ticker/bookTicker بدل /ticker/price أو /ticker/24hr - أخف وأدق لأفضل سعر تنفيذ لحظي */
-    suspend fun fetchBinanceBookTicker(): Map<String, BookQuote> = withContext(Dispatchers.IO) {
-        val body = get("https://api.binance.com/api/v3/ticker/bookTicker") ?: return@withContext emptyMap()
-        val result = HashMap<String, BookQuote>()
-        try {
-            val arr = JSONArray(body)
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val symbol = obj.optString("symbol")
-                val bid = obj.optString("bidPrice").toDoubleOrNull()
-                val ask = obj.optString("askPrice").toDoubleOrNull()
-                if (symbol.isNotEmpty() && bid != null && ask != null && bid > 0.0 && ask > 0.0) {
-                    result[symbol] = BookQuote(bid, ask)
-                }
-            }
-        } catch (_: Exception) { }
-        result
-    }
-
-    /** Bybit: نفس نداء /v5/market/tickers الحالي أصلاً بيرجّع bid1Price/ask1Price - مفيش طلب إضافي */
-    suspend fun fetchBybitBookTicker(): Map<String, BookQuote> = withContext(Dispatchers.IO) {
-        val body = get("https://api.bybit.com/v5/market/tickers?category=spot") ?: return@withContext emptyMap()
-        val result = HashMap<String, BookQuote>()
-        try {
-            val root = JSONObject(body)
-            val list = root.getJSONObject("result").getJSONArray("list")
-            for (i in 0 until list.length()) {
-                val obj = list.getJSONObject(i)
-                val symbol = obj.optString("symbol")
-                val bid = obj.optString("bid1Price").toDoubleOrNull()
-                val ask = obj.optString("ask1Price").toDoubleOrNull()
-                if (symbol.isNotEmpty() && bid != null && ask != null && bid > 0.0 && ask > 0.0) {
-                    result[symbol] = BookQuote(bid, ask)
-                }
-            }
-        } catch (_: Exception) { }
-        result
-    }
-
-    /** OKX: نفس نداء /market/tickers الحالي أصلاً بيرجّع bidPx/askPx - مفيش طلب إضافي */
-    suspend fun fetchOkxBookTicker(): Map<String, BookQuote> = withContext(Dispatchers.IO) {
-        val body = get("https://www.okx.com/api/v5/market/tickers?instType=SPOT") ?: return@withContext emptyMap()
-        val result = HashMap<String, BookQuote>()
-        try {
-            val root = JSONObject(body)
-            val data = root.getJSONArray("data")
-            for (i in 0 until data.length()) {
-                val obj = data.getJSONObject(i)
-                val instId = obj.optString("instId")
-                val bid = obj.optString("bidPx").toDoubleOrNull()
-                val ask = obj.optString("askPx").toDoubleOrNull()
-                if (instId.isNotEmpty() && bid != null && ask != null && bid > 0.0 && ask > 0.0) {
-                    result[instId] = BookQuote(bid, ask)
-                }
-            }
-        } catch (_: Exception) { }
-        result
-    }
-
-    /** KuCoin: نفس نداء /market/allTickers الحالي أصلاً بيرجّع buy (أفضل Bid) وsell (أفضل Ask) - مفيش طلب إضافي */
-    suspend fun fetchKucoinBookTicker(): Map<String, BookQuote> = withContext(Dispatchers.IO) {
-        val body = get("https://api.kucoin.com/api/v1/market/allTickers") ?: return@withContext emptyMap()
-        val result = HashMap<String, BookQuote>()
-        try {
-            val root = JSONObject(body)
-            val ticker = root.getJSONObject("data").getJSONArray("ticker")
-            for (i in 0 until ticker.length()) {
-                val obj = ticker.getJSONObject(i)
-                val symbol = obj.optString("symbol")
-                val bid = obj.optString("buy").toDoubleOrNull()
-                val ask = obj.optString("sell").toDoubleOrNull()
-                if (symbol.isNotEmpty() && bid != null && ask != null && bid > 0.0 && ask > 0.0) {
-                    result[symbol] = BookQuote(bid, ask)
-                }
-            }
-        } catch (_: Exception) { }
-        result
-    }
-
-    /** Gate.io: نفس نداء /spot/tickers الحالي أصلاً بيرجّع highest_bid/lowest_ask - مفيش طلب إضافي */
-    suspend fun fetchGateioBookTicker(): Map<String, BookQuote> = withContext(Dispatchers.IO) {
-        val body = get("https://api.gateio.ws/api/v4/spot/tickers") ?: return@withContext emptyMap()
-        val result = HashMap<String, BookQuote>()
-        try {
-            val arr = JSONArray(body)
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val pair = obj.optString("currency_pair")
-                val bid = obj.optString("highest_bid").toDoubleOrNull()
-                val ask = obj.optString("lowest_ask").toDoubleOrNull()
-                if (pair.isNotEmpty() && bid != null && ask != null && bid > 0.0 && ask > 0.0) {
-                    result[pair] = BookQuote(bid, ask)
-                }
-            }
-        } catch (_: Exception) { }
-        result
-    }
-
-    // ---------------------------------------------------------------------
     // عمق دفتر الطلبات (Order Book Depth) - بيتسحب عند الطلب بس (مش كل تحديث)
     // عشان ميتجاوزش حدود الطلبات (Rate Limits) بتاعة المنصات. كل دالة بترجع
     // لقطة حية فعلية وقت الاستدعاء، أو null لو فشل الطلب (من غير بيانات وهمية بديلة).
@@ -328,16 +223,6 @@ object ExchangeClients {
         "OKX" -> fetchOkxDepth(coin.okxInstId)
         "KuCoin" -> fetchKucoinDepth(coin.kucoinSymbol)
         "Gate.io" -> fetchGateioDepth(coin.gateioSymbol)
-        else -> null
-    }
-
-    /** زي [fetchDepthFor] بس برمز خام مباشر بدل CoinDef - مستخدمة في فحص التداول الثلاثي لجلب عمق أزواج Cross (مش بس زوج USDT) */
-    suspend fun fetchDepthForSymbol(exchangeName: String, symbol: String): OrderBookSnapshot? = when (exchangeName) {
-        "Binance" -> fetchBinanceDepth(symbol)
-        "Bybit" -> fetchBybitDepth(symbol)
-        "OKX" -> fetchOkxDepth(symbol)
-        "KuCoin" -> fetchKucoinDepth(symbol)
-        "Gate.io" -> fetchGateioDepth(symbol)
         else -> null
     }
 

@@ -25,14 +25,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,7 +44,6 @@ import com.arbispread.app.model.FREE_COIN_LIMIT
 import com.arbispread.app.ui.Strings
 import com.arbispread.app.ui.components.BannerAdView
 import com.arbispread.app.ui.components.CoinSpreadCard
-import com.arbispread.app.ui.components.TriangularCard
 import com.arbispread.app.ui.components.LockedCoinCard
 import com.arbispread.app.ui.theme.AccentCyan
 import com.arbispread.app.ui.theme.BgDeep
@@ -65,7 +61,6 @@ fun HomeScreen(
     onCapitalChange: (Double) -> Unit,
     onFilterChange: (Boolean) -> Unit,
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
     var capitalText by remember { mutableStateOf(state.capitalUsd.toInt().toString()) }
 
     Scaffold(
@@ -155,23 +150,6 @@ fun HomeScreen(
                 }
             }
 
-            TabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = BgDeep,
-                contentColor = AccentCyan
-            ) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text(Strings.t("tab_arbitrage")) }
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text(Strings.t("tab_triangular")) }
-                )
-            }
-
             Box(modifier = Modifier.fillMaxSize()) {
                 if (state.isLoading && state.results.isEmpty()) {
                     Column(
@@ -189,50 +167,29 @@ fun HomeScreen(
                     return@Box
                 }
 
-                if (selectedTab == 0) {
-                    // بنرتّب دايماً من الأعلى ربحاً للأقل (العملات غير القابلة للحساب
-                    // بتنزل لآخر القايمة) - عشان أفضل فرصة فعلية تبقى أول حاجة يشوفها
-                    // المستخدم، مش بترتيب ثابت حسب قايمة العملات الأصلية
-                    val sortedResults = state.results.sortedByDescending { it.netProfitPercent(state.capitalUsd) ?: Double.NEGATIVE_INFINITY }
-                    val filteredResults = if (state.filterProfitableOnly) {
-                        sortedResults.filter { (it.netProfitPercent(state.capitalUsd) ?: -1.0) > 0.0 }
-                    } else {
-                        sortedResults
-                    }
-
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        itemsIndexed(filteredResults) { index, result ->
-                            if (index < FREE_COIN_LIMIT || state.unlockedAll) {
-                                CoinSpreadCard(result, capitalUsd = state.capitalUsd)
-                            } else {
-                                LockedCoinCard(onUnlockClick = onUnlockRequested)
-                            }
-                        }
-                    }
+                // بنرتّب دايماً من الأعلى ربحاً للأقل (العملات غير القابلة للحساب
+                // بتنزل لآخر القايمة) - عشان أفضل فرصة فعلية تبقى أول حاجة يشوفها
+                // المستخدم، مش بترتيب ثابت حسب قايمة العملات الأصلية
+                val sortedResults = state.results.sortedByDescending { it.netProfitPercent(state.capitalUsd) ?: Double.NEGATIVE_INFINITY }
+                val filteredResults = if (state.filterProfitableOnly) {
+                    sortedResults.filter { (it.netProfitPercent(state.capitalUsd) ?: -1.0) > 0.0 }
                 } else {
-                    // نفس فكرة ترتيب الاسبريد - أفضل فرصة تداول ثلاثي (أعلى صافي ربح) تطلع الأول
-                    val sortedTriangular = state.triangularResults.sortedByDescending {
-                        it.bestFlow(state.capitalUsd.coerceAtLeast(1.0)).second.netProfitUsd
-                    }
-                    val filteredTriangular = if (state.filterProfitableOnly) {
-                        sortedTriangular.filter { it.bestFlow(state.capitalUsd.coerceAtLeast(1.0)).second.netProfitUsd > 0.0 }
-                    } else {
-                        sortedTriangular
-                    }
+                    sortedResults
+                }
 
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        itemsIndexed(filteredTriangular) { index, quote ->
-                            if (index < FREE_COIN_LIMIT || state.unlockedAll) {
-                                TriangularCard(quote, capitalUsd = state.capitalUsd)
-                            } else {
-                                LockedCoinCard(onUnlockClick = onUnlockRequested)
-                            }
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    itemsIndexed(filteredResults) { index, result ->
+                        if (index < FREE_COIN_LIMIT || state.unlockedAll) {
+                            CoinSpreadCard(
+                                result,
+                                capitalUsd = state.capitalUsd,
+                                persistence = state.persistenceByCoinId[result.coin.id]
+                            )
+                        } else {
+                            LockedCoinCard(onUnlockClick = onUnlockRequested)
                         }
                     }
                 }

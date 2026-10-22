@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.arbispread.app.model.CoinPersistenceInfo
 import com.arbispread.app.model.CoinSpreadResult
 import com.arbispread.app.model.ExchangeLinks
 import com.arbispread.app.model.MinimumOrderSize
@@ -55,7 +56,12 @@ import java.util.Locale
 import kotlin.math.abs
 
 @Composable
-fun CoinSpreadCard(result: CoinSpreadResult, capitalUsd: Double, modifier: Modifier = Modifier) {
+fun CoinSpreadCard(
+    result: CoinSpreadResult,
+    capitalUsd: Double,
+    persistence: CoinPersistenceInfo? = null,
+    modifier: Modifier = Modifier,
+) {
     val breakdown = result.feeBreakdown(capitalUsd)
     val netPercent = breakdown?.netProfitPercent
     val netUsd = breakdown?.netProfitUsd
@@ -173,6 +179,26 @@ fun CoinSpreadCard(result: CoinSpreadResult, capitalUsd: Double, modifier: Modif
                     color = accent,
                     modifier = Modifier.padding(top = 6.dp)
                 )
+
+                // شارة استمرارية الفرصة - بتفرّق بين فرصة ومضة لحظية (محتاج تكون حذر منها)
+                // وفرصة مستمرة فعلاً من كذا دقيقة (أكتر ثقة إنها لسه موجودة وقت التنفيذ).
+                // بتتحسب على رأس مال مرجعي ثابت مش رأس مال المستخدم - عشان متتصفرش كل
+                // مرة يغيّر الرقم، وبتظهر بس لما الصفقة رابحة دلوقتي
+                if (isProfit && persistence != null && persistence.consecutiveProfitableCount > 0) {
+                    val isStrong = persistence.consecutiveProfitableCount >= CoinPersistenceInfo.STRONG_STREAK_THRESHOLD
+                    val persistenceText = when {
+                        persistence.consecutiveProfitableCount <= 1 -> "⚡ " + Strings.t("persistence_just_appeared")
+                        persistence.persistenceMinutes < 1.0 -> "👀 " + Strings.t("persistence_seconds_label")
+                        else -> (if (isStrong) "🔥 " else "👀 ") + Strings.t("persistence_label") + " ~" +
+                            persistence.persistenceMinutes.toInt() + " " + Strings.t("persistence_minutes_suffix")
+                    }
+                    Text(
+                        text = persistenceText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isStrong) ProfitGreen else if (persistence.consecutiveProfitableCount <= 1) WarnAmber else TextSecondary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
 
                 // تحذير لو رأس المال المدخل أقل من الحد الأدنى النموذجي لصفقة واحدة على
                 // إحدى المنصتين - الصفقة غالباً هترفض فعلياً حتى لو النسبة% بتقول رابحة
