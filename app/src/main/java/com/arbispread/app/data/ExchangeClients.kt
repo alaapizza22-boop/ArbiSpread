@@ -330,6 +330,16 @@ object ExchangeClients {
         else -> null
     }
 
+    /** زي [fetchDepthFor] بس برمز خام مباشر بدل CoinDef - مستخدمة في فحص التداول الثلاثي لجلب عمق أزواج Cross (مش بس زوج USDT) */
+    suspend fun fetchDepthForSymbol(exchangeName: String, symbol: String): OrderBookSnapshot? = when (exchangeName) {
+        "Binance" -> fetchBinanceDepth(symbol)
+        "Bybit" -> fetchBybitDepth(symbol)
+        "OKX" -> fetchOkxDepth(symbol)
+        "KuCoin" -> fetchKucoinDepth(symbol)
+        "Gate.io" -> fetchGateioDepth(symbol)
+        else -> null
+    }
+
     // ---------------------------------------------------------------------
     // حالة الإيداع/السحب (Wallet Network Status)
     // **تنبيه صريح**: Binance و Bybit و OKX ماعندهمش Endpoint عام (من غير مفتاح API
@@ -345,25 +355,34 @@ object ExchangeClients {
      * كممثل. لو الحقل مش موجود (رد قديم أو عملة من غير شبكات متعددة)، withdrawFeeNative
      * بترجع null بدل ما نخترع رقم.
      */
+    /** بياخد كل الشبكات المتاحة ويختار أرخص واحدة شغالة فعلاً (withdrawEnabled) - لو مفيش شبكة شغالة، بيرجع أرخص واحدة برضو كـ"مرجعي" بس مع العلم إنها موقوفة */
+    private fun cheapestEnabledNetwork(options: List<NetworkFeeOption>): NetworkFeeOption? =
+        options.filter { it.withdrawEnabled }.minByOrNull { it.withdrawFeeNative }
+            ?: options.minByOrNull { it.withdrawFeeNative }
+
     suspend fun fetchKucoinWalletStatus(currencyCode: String): WalletNetworkStatus? = withContext(Dispatchers.IO) {
         val body = get("https://api.kucoin.com/api/v1/currencies/$currencyCode") ?: return@withContext null
         try {
             val data = JSONObject(body).getJSONObject("data")
-            var networkName: String? = null
-            var feeNative: Double? = null
             val chains = data.optJSONArray("chains")
-            if (chains != null && chains.length() > 0) {
-                val chain = chains.getJSONObject(0)
-                networkName = chain.optString("chainName").takeIf { it.isNotBlank() }
-                feeNative = chain.optString("withdrawalMinFee").toDoubleOrNull()
+            val options = mutableListOf<NetworkFeeOption>()
+            if (chains != null) {
+                for (c in 0 until chains.length()) {
+                    val chain = chains.getJSONObject(c)
+                    val name = chain.optString("chainName").takeIf { it.isNotBlank() } ?: continue
+                    val fee = chain.optString("withdrawalMinFee").toDoubleOrNull() ?: continue
+                    options.add(NetworkFeeOption(name, fee, chain.optBoolean("isWithdrawEnabled", true)))
+                }
             }
+            val cheapest = cheapestEnabledNetwork(options)
             WalletNetworkStatus(
                 exchangeName = "KuCoin",
                 depositEnabled = data.optBoolean("isDepositEnabled", true),
                 withdrawEnabled = data.optBoolean("isWithdrawEnabled", true),
                 isVerifiable = true,
-                networkName = networkName,
-                withdrawFeeNative = feeNative,
+                networkName = cheapest?.networkName,
+                withdrawFeeNative = cheapest?.withdrawFeeNative,
+                availableNetworks = options.sortedBy { it.withdrawFeeNative }.ifEmpty { null },
             )
         } catch (_: Exception) { null }
     }
@@ -375,29 +394,27 @@ object ExchangeClients {
             if (arr.length() == 0) return@withContext null
             // لو أي شبكة من شبكات العملة شغالة، نعتبر الإيداع/السحب متاح عموماً على المنصة
             var depositEnabled = false
-            var withdrawEnabled = false
-            var networkName: String? = null
-            var feeNative: Double? = null
+            var anyWithdrawEnabled = false
+            val options = mutableListOf<NetworkFeeOption>()
             for (i in 0 until arr.length()) {
                 val chain = arr.getJSONObject(i)
                 if (!chain.optBoolean("is_deposit_disabled", false)) depositEnabled = true
-                if (!chain.optBoolean("is_withdraw_disabled", false)) withdrawEnabled = true
-                // بناخد رسم أول شبكة واردة كممثل - الحقل أحياناً مسمى withdraw_fix_fee في رد هذا الـ Endpoint
-                if (feeNative == null) {
-                    val fee = chain.optString("withdraw_fix_fee").toDoubleOrNull()
-                    if (fee != null) {
-                        feeNative = fee
-                        networkName = chain.optString("chain").takeIf { it.isNotBlank() }
-                    }
-                }
+                val withdrawEnabledHere = !chain.optBoolean("is_withdraw_disabled", false)
+                if (withdrawEnabledHere) anyWithdrawEnabled = true
+                // الحقل أحياناً مسمى withdraw_fix_fee في رد هذا الـ Endpoint
+                val fee = chain.optString("withdraw_fix_fee").toDoubleOrNull()
+                val name = chain.optString("chain").takeIf { it.isNotBlank() }
+                if (fee != null && name != null) options.add(NetworkFeeOption(name, fee, withdrawEnabledHere))
             }
+            val cheapest = cheapestEnabledNetwork(options)
             WalletNetworkStatus(
                 exchangeName = "Gate.io",
                 depositEnabled = depositEnabled,
-                withdrawEnabled = withdrawEnabled,
+                withdrawEnabled = anyWithdrawEnabled,
                 isVerifiable = true,
-                networkName = networkName,
-                withdrawFeeNative = feeNative,
+                networkName = cheapest?.networkName,
+                withdrawFeeNative = cheapest?.withdrawFeeNative,
+                availableNetworks = options.sortedBy { it.withdrawFeeNative }.ifEmpty { null },
             )
         } catch (_: Exception) { null }
     }
@@ -436,30 +453,28 @@ object ExchangeClients {
                 val coinId = coin.optString("coin")
                 if (coinId.isEmpty()) continue
                 val networks = coin.optJSONArray("networkList")
-                var networkName: String? = null
-                var feeNative: Double? = null
                 var depositEnabled: Boolean? = coin.optBoolean("depositAllEnable", true)
                 var withdrawEnabled: Boolean? = coin.optBoolean("withdrawAllEnable", true)
-                if (networks != null && networks.length() > 0) {
-                    // بنفضّل الشبكة الافتراضية (isDefault) لو موجودة، وإلا أول شبكة متاحة
-                    var chosen: JSONObject? = null
+                // بنبني كل الشبكات المتاحة للعملة دي ونختار أرخص واحدة شغالة تلقائياً -
+                // بدل الاعتماد على الشبكة الافتراضية بس، اللي ممكن متبقاش الأرخص دايماً
+                val networkOptions = mutableListOf<NetworkFeeOption>()
+                if (networks != null) {
                     for (n in 0 until networks.length()) {
                         val net = networks.getJSONObject(n)
-                        if (net.optBoolean("isDefault", false)) { chosen = net; break }
+                        val name = net.optString("network").takeIf { it.isNotBlank() } ?: continue
+                        val fee = net.optString("withdrawFee").toDoubleOrNull() ?: continue
+                        networkOptions.add(NetworkFeeOption(name, fee, net.optBoolean("withdrawEnable", true)))
                     }
-                    if (chosen == null) chosen = networks.getJSONObject(0)
-                    networkName = chosen.optString("network").takeIf { it.isNotBlank() }
-                    feeNative = chosen.optString("withdrawFee").toDoubleOrNull()
-                    depositEnabled = chosen.optBoolean("depositEnable", depositEnabled ?: true)
-                    withdrawEnabled = chosen.optBoolean("withdrawEnable", withdrawEnabled ?: true)
                 }
+                val cheapest = cheapestEnabledNetwork(networkOptions)
                 result[coinId] = WalletNetworkStatus(
                     exchangeName = "Binance",
                     depositEnabled = depositEnabled,
                     withdrawEnabled = withdrawEnabled,
                     isVerifiable = true,
-                    networkName = networkName,
-                    withdrawFeeNative = feeNative,
+                    networkName = cheapest?.networkName,
+                    withdrawFeeNative = cheapest?.withdrawFeeNative,
+                    availableNetworks = networkOptions.sortedBy { it.withdrawFeeNative }.ifEmpty { null },
                 )
             }
         } catch (_: Exception) { }
@@ -491,24 +506,30 @@ object ExchangeClients {
                 val coinId = row.optString("coin")
                 if (coinId.isEmpty()) continue
                 val chains = row.optJSONArray("chains")
-                var networkName: String? = null
-                var feeNative: Double? = null
-                var depositEnabled: Boolean? = null
-                var withdrawEnabled: Boolean? = null
-                if (chains != null && chains.length() > 0) {
-                    val chain = chains.getJSONObject(0)
-                    networkName = chain.optString("chain").takeIf { it.isNotBlank() }
-                    feeNative = chain.optString("withdrawFee").toDoubleOrNull()
-                    depositEnabled = chain.optString("chainDeposit") == "1"
-                    withdrawEnabled = chain.optString("chainWithdraw") == "1"
+                // حالة الإيداع/السحب العامة للعملة = لو أي شبكة من شبكاتها شغالة (مش بس أول شبكة)
+                var depositEnabled = false
+                var withdrawEnabled = false
+                val options = mutableListOf<NetworkFeeOption>()
+                if (chains != null) {
+                    for (c in 0 until chains.length()) {
+                        val chain = chains.getJSONObject(c)
+                        val name = chain.optString("chain").takeIf { it.isNotBlank() } ?: continue
+                        val fee = chain.optString("withdrawFee").toDoubleOrNull() ?: continue
+                        val chainWithdrawEnabled = chain.optString("chainWithdraw") == "1"
+                        if (chain.optString("chainDeposit") == "1") depositEnabled = true
+                        if (chainWithdrawEnabled) withdrawEnabled = true
+                        options.add(NetworkFeeOption(name, fee, chainWithdrawEnabled))
+                    }
                 }
+                val cheapest = cheapestEnabledNetwork(options)
                 result[coinId] = WalletNetworkStatus(
                     exchangeName = "Bybit",
                     depositEnabled = depositEnabled,
                     withdrawEnabled = withdrawEnabled,
                     isVerifiable = true,
-                    networkName = networkName,
-                    withdrawFeeNative = feeNative,
+                    networkName = cheapest?.networkName,
+                    withdrawFeeNative = cheapest?.withdrawFeeNative,
+                    availableNetworks = options.sortedBy { it.withdrawFeeNative }.ifEmpty { null },
                 )
             }
         } catch (_: Exception) { }
@@ -537,19 +558,35 @@ object ExchangeClients {
                 )
             ) ?: return@withContext emptyMap()
             val data = JSONObject(body).getJSONArray("data")
+            // لو العملة معاها أكتر من شبكة، كل شبكة بتيجي كصف منفصل في الرد - بنجمّع كل
+            // صفوف نفس العملة الأول عشان نقدر نختار أرخص شبكة شغالة من بينهم كلهم
+            val optionsByCoin = HashMap<String, MutableList<NetworkFeeOption>>()
+            val depositByCoin = HashMap<String, Boolean>()
+            val withdrawByCoin = HashMap<String, Boolean>()
             for (i in 0 until data.length()) {
                 val row = data.getJSONObject(i)
                 val coinId = row.optString("ccy")
                 if (coinId.isEmpty()) continue
-                // لو العملة معاها أكتر من شبكة، كل شبكة بتيجي كصف منفصل في الرد - بناخد أول صف كممثل
-                if (result.containsKey(coinId)) continue
+                val chainName = row.optString("chain").takeIf { it.isNotBlank() }
+                val fee = row.optString("minFee").toDoubleOrNull()
+                val canWd = row.optBoolean("canWd", true)
+                val canDep = row.optBoolean("canDep", true)
+                if (chainName != null && fee != null) {
+                    optionsByCoin.getOrPut(coinId) { mutableListOf() }.add(NetworkFeeOption(chainName, fee, canWd))
+                }
+                depositByCoin[coinId] = (depositByCoin[coinId] ?: false) || canDep
+                withdrawByCoin[coinId] = (withdrawByCoin[coinId] ?: false) || canWd
+            }
+            for ((coinId, options) in optionsByCoin) {
+                val cheapest = cheapestEnabledNetwork(options)
                 result[coinId] = WalletNetworkStatus(
                     exchangeName = "OKX",
-                    depositEnabled = row.optBoolean("canDep", true),
-                    withdrawEnabled = row.optBoolean("canWd", true),
+                    depositEnabled = depositByCoin[coinId],
+                    withdrawEnabled = withdrawByCoin[coinId],
                     isVerifiable = true,
-                    networkName = row.optString("chain").takeIf { it.isNotBlank() },
-                    withdrawFeeNative = row.optString("minFee").toDoubleOrNull(),
+                    networkName = cheapest?.networkName,
+                    withdrawFeeNative = cheapest?.withdrawFeeNative,
+                    availableNetworks = options.sortedBy { it.withdrawFeeNative },
                 )
             }
         } catch (_: Exception) { }

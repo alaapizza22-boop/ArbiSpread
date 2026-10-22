@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -38,6 +39,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.arbispread.app.ads.AdsManager
 import com.arbispread.app.model.FREE_COIN_LIMIT
 import com.arbispread.app.ui.Strings
@@ -127,6 +131,28 @@ fun HomeScreen(
                         colors = SwitchDefaults.colors(checkedTrackColor = AccentCyan)
                     )
                 }
+
+                // آخر وقت وصلت فيه بيانات فعلية من المنصات - بيتحدّث تلقائياً كل 20 ثانية
+                // أو عند الضغط على زرار التحديث اليدوي، عشان يبان واضح إن الأسعار مش لحظة الفتح بس
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        Strings.t("last_updated_label") + " " +
+                            if (state.lastUpdatedAtMillis > 0) formatUpdateTime(state.lastUpdatedAtMillis) else Strings.t("last_updated_never"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                    if (state.isLoading && state.lastUpdatedAtMillis > 0) {
+                        CircularProgressIndicator(
+                            color = AccentCyan,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
             }
 
             TabRow(
@@ -164,10 +190,14 @@ fun HomeScreen(
                 }
 
                 if (selectedTab == 0) {
+                    // بنرتّب دايماً من الأعلى ربحاً للأقل (العملات غير القابلة للحساب
+                    // بتنزل لآخر القايمة) - عشان أفضل فرصة فعلية تبقى أول حاجة يشوفها
+                    // المستخدم، مش بترتيب ثابت حسب قايمة العملات الأصلية
+                    val sortedResults = state.results.sortedByDescending { it.netProfitPercent(state.capitalUsd) ?: Double.NEGATIVE_INFINITY }
                     val filteredResults = if (state.filterProfitableOnly) {
-                        state.results.filter { (it.netProfitPercent(state.capitalUsd) ?: -1.0) > 0.0 }
+                        sortedResults.filter { (it.netProfitPercent(state.capitalUsd) ?: -1.0) > 0.0 }
                     } else {
-                        state.results
+                        sortedResults
                     }
 
                     LazyColumn(
@@ -183,10 +213,14 @@ fun HomeScreen(
                         }
                     }
                 } else {
+                    // نفس فكرة ترتيب الاسبريد - أفضل فرصة تداول ثلاثي (أعلى صافي ربح) تطلع الأول
+                    val sortedTriangular = state.triangularResults.sortedByDescending {
+                        it.bestFlow(state.capitalUsd.coerceAtLeast(1.0)).second.netProfitUsd
+                    }
                     val filteredTriangular = if (state.filterProfitableOnly) {
-                        state.triangularResults.filter { it.bestFlow(state.capitalUsd.coerceAtLeast(1.0)).second.netProfitUsd > 0.0 }
+                        sortedTriangular.filter { it.bestFlow(state.capitalUsd.coerceAtLeast(1.0)).second.netProfitUsd > 0.0 }
                     } else {
-                        state.triangularResults
+                        sortedTriangular
                     }
 
                     LazyColumn(
@@ -206,3 +240,7 @@ fun HomeScreen(
         }
     }
 }
+
+/** بيصيغ وقت آخر تحديث بصيغة HH:mm:ss محلية بسيطة - مش محتاجين تاريخ كامل لأن التحديث بيحصل كل 20 ثانية */
+private fun formatUpdateTime(millis: Long): String =
+    SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(millis))

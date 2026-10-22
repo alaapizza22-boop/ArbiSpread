@@ -23,7 +23,10 @@ import com.arbispread.app.data.ApiKeyStore
 import com.arbispread.app.data.LiquidityRepository
 import com.arbispread.app.model.CoinDef
 import com.arbispread.app.model.LiquidityCheckResult
+import com.arbispread.app.model.NetworkTransferTime
 import com.arbispread.app.model.WalletNetworkStatus
+import com.arbispread.app.model.WithdrawalFees
+import com.arbispread.app.ui.AppLanguage
 import com.arbispread.app.ui.Strings
 import com.arbispread.app.ui.theme.AccentCyan
 import com.arbispread.app.ui.theme.LossRed
@@ -107,6 +110,33 @@ fun LiquidityCheckDialog(
                             )
                         }
 
+                        // تحذير صريح إن الربح المعروض نظري ولحظي، وإن السعر ممكن يتحرك
+                        // أثناء الوقت الفعلي اللي التحويل هياخده - مش بس وقت الفحص
+                        Text(
+                            Strings.t("transfer_time_risk_note"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = WarnAmber,
+                            modifier = Modifier.padding(top = 12.dp)
+                        )
+
+                        // تقدير وقت التأكيد التقريبي للشبكة الفعلية اللي هتتسحب بيها
+                        // العملة من منصة الشراء - دي الخطوة اللي بتحمل مخاطرة حركة السعر
+                        val transferNetworkName = r.buyWalletStatus?.networkName ?: WithdrawalFees.networkNameFor(coin.id)
+                        val transferRange = NetworkTransferTime.estimateFor(transferNetworkName)
+                        Text(
+                            Strings.t("transfer_time_estimate_label") +
+                                (transferNetworkName?.let { " ($it)" } ?: "") + ": " +
+                                if (transferRange != null) {
+                                    if (Strings.language.value == AppLanguage.AR) NetworkTransferTime.formatRange(transferRange)
+                                    else NetworkTransferTime.formatRangeEn(transferRange)
+                                } else {
+                                    Strings.t("transfer_time_unknown")
+                                },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+
                         Text(
                             Strings.t("wallet_status_title"),
                             style = MaterialTheme.typography.labelMedium,
@@ -148,7 +178,8 @@ private fun WalletStatusRow(exchangeName: String, status: WalletNetworkStatus?, 
             Text("$exchangeName ($label)", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
             Text(text, style = MaterialTheme.typography.bodySmall, color = color)
         }
-        // لو عندنا رسم سحب حقيقي مسحوب حياً (من Endpoint عام أو مفتاح شخصي)، نوريه هنا
+        // لو عندنا رسم سحب حقيقي مسحوب حياً (من Endpoint عام أو مفتاح شخصي)، نوريه هنا -
+        // وده أصلاً أرخص شبكة شغالة من بين كل الشبكات المتاحة، مش أول شبكة أو الافتراضية بس
         if (!isDepositSide && status?.withdrawFeeNative != null) {
             Text(
                 Strings.t("live_withdraw_fee_label") + " " +
@@ -157,6 +188,44 @@ private fun WalletStatusRow(exchangeName: String, status: WalletNetworkStatus?, 
                 style = MaterialTheme.typography.labelSmall,
                 color = ProfitGreen
             )
+            if ((status.availableNetworks?.size ?: 0) > 1) {
+                Text(
+                    Strings.t("live_withdraw_fee_cheapest_note"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+            }
+        }
+
+        // لو العملة معاها أكتر من شبكة سحب متاحة، نوريهم كلهم مرتبين من الأرخص للأغلى -
+        // عشان المستخدم يقدر يشوف ويقرر بنفسه لو حاب شبكة تانية غير اللي اخترناها تلقائياً
+        if (!isDepositSide && (status?.availableNetworks?.size ?: 0) > 1) {
+            Text(
+                Strings.t("available_networks_title"),
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            status!!.availableNetworks!!.forEach { option ->
+                val isCheapestEnabled = option.networkName == status.networkName &&
+                    option.withdrawFeeNative == status.withdrawFeeNative
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(start = 8.dp, top = 1.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        (if (isCheapestEnabled) "✓ " else "") + option.networkName +
+                            (if (!option.withdrawEnabled) " (${Strings.t("network_disabled_badge")})" else ""),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (!option.withdrawEnabled) TextSecondary else if (isCheapestEnabled) ProfitGreen else TextSecondary
+                    )
+                    Text(
+                        String.format(Locale.US, "%.8f", option.withdrawFeeNative),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isCheapestEnabled) ProfitGreen else TextSecondary
+                    )
+                }
+            }
         }
     }
 }

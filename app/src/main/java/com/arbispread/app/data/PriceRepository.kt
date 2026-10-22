@@ -143,11 +143,14 @@ class PriceRepository(private val coins: List<CoinDef>) {
         usdtSymbol: (base: String) -> String,
         bridgeCoin: String = "BTC",
     ): List<TriangularQuotes> {
-        val bridgeBook = books[usdtSymbol(bridgeCoin)] ?: return emptyList()
+        val bridgeUsdtSymbol = usdtSymbol(bridgeCoin)
+        val bridgeBook = books[bridgeUsdtSymbol] ?: return emptyList()
         return coins.mapNotNull { coin ->
             if (coin.id == bridgeCoin) return@mapNotNull null
-            val targetBook = books[usdtSymbol(coin.id)] ?: return@mapNotNull null
-            val crossBook = books[crossSymbol(coin.id)] ?: return@mapNotNull null
+            val targetUsdtSymbol = usdtSymbol(coin.id)
+            val crossPairSymbol = crossSymbol(coin.id)
+            val targetBook = books[targetUsdtSymbol] ?: return@mapNotNull null
+            val crossBook = books[crossPairSymbol] ?: return@mapNotNull null
             val quote = TriangularQuotes(
                 exchangeName = exchangeName,
                 bridgeCoin = bridgeCoin,
@@ -156,6 +159,9 @@ class PriceRepository(private val coins: List<CoinDef>) {
                 crossBook = crossBook,
                 targetBook = targetBook,
                 takerFeePercent = takerFeePercent,
+                bridgeSymbol = bridgeUsdtSymbol,
+                crossSymbol = crossPairSymbol,
+                targetSymbol = targetUsdtSymbol,
             )
             // النسبة% ثابتة أيًا كان رأس المال (محسوبة نسبياً بالكامل)، فاستخدام رقم مرجعي
             // ثابت هنا لفحص المنطقية كافٍ ومطابق تمامًا لنتيجة أي رأس مال حقيقي

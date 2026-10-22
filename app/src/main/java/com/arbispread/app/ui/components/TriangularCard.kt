@@ -6,13 +6,23 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +44,7 @@ fun TriangularCard(quote: TriangularQuotes, capitalUsd: Double, modifier: Modifi
     val (isForward, flow) = quote.bestFlow(capitalUsd.coerceAtLeast(1.0))
     val isProfit = flow.netProfitUsd > 0.0
     val accent = if (isProfit) ProfitGreen else LossRed
+    var showExecutionDialog by remember { mutableStateOf(false) }
 
     val pathText = if (isForward) {
         "USDT → ${quote.bridgeCoin} → ${quote.targetCoin.id} → USDT"
@@ -123,6 +134,30 @@ fun TriangularCard(quote: TriangularQuotes, capitalUsd: Double, modifier: Modifi
                 color = TextSecondary,
                 modifier = Modifier.padding(top = 6.dp)
             )
+
+            // زرار "التحقق قبل التنفيذ" - بيسحب عمق دفتر الطلبات الحقيقي للثلاث خطوات
+            // عند الطلب بس (مش تلقائي)، ويحسب النتيجة الفعلية بعد الانزلاق السعري
+            Button(
+                onClick = { showExecutionDialog = true },
+                colors = ButtonDefaults.buttonColors(containerColor = BgCard, contentColor = AccentCyan),
+                border = BorderStroke(1.dp, AccentCyan),
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+            ) {
+                Icon(Icons.Filled.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                Text(
+                    Strings.t("pre_execution_check_button"),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
+
+            if (showExecutionDialog) {
+                TriangularExecutionDialog(
+                    quote = quote,
+                    capitalUsd = capitalUsd,
+                    onDismiss = { showExecutionDialog = false }
+                )
+            }
         }
     }
 }

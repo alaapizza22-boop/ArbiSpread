@@ -57,6 +57,11 @@ data class TriangularQuotes(
     val crossBook: BookQuote,    // [targetCoin]/[bridgeCoin] - كام [bridgeCoin] للوحدة الواحدة من [targetCoin]
     val targetBook: BookQuote,   // [targetCoin]/USDT
     val takerFeePercent: Double, // عمولة Taker الموحدة لنفس المنصة - بتتخصم 3 مرات (خطوة لكل صفقة)
+    /** رمز الزوج الخام على المنصة نفسها (مثلاً "BTCUSDT" أو "ETH-BTC") - مستخدم بس
+     * لجلب عمق دفتر الطلبات الكامل وقت فحص "التحقق قبل التنفيذ"، مش للعرض */
+    val bridgeSymbol: String,
+    val crossSymbol: String,
+    val targetSymbol: String,
 ) {
     private fun flow(capitalUsd: Double, forward: Boolean): TriangularLegFlow {
         val feeMultiplier = 1.0 - takerFeePercent / 100.0
@@ -122,3 +127,28 @@ data class TriangularQuotes(
         const val MAX_LEG_SPREAD_PERCENT = 5.0
     }
 }
+
+/**
+ * نتيجة "التحقق قبل التنفيذ" (Pre-execution Check) - فحص حي لحظي بيسحب عمق دفتر
+ * الطلبات الفعلي للثلاث أزواج وقت الطلب (مش من بيانات التحديث التلقائي)، وبيحسب
+ * النتيجة الحقيقية بعد "المشي" فعلياً عبر مستويات السعر (VWAP) لمبلغ رأس المال
+ * المحدد - مش بافتراض إنك هتاخد أفضل سعر بس زي بطاقة العرض العادية.
+ */
+data class TriangularExecutionResult(
+    val exchangeName: String,
+    val targetCoinId: String,
+    /** الاتجاه اللي اترجّح وقت العرض الأولي (من أفضل سعر) - بيتفحص هو نفسه هنا بعمق حقيقي */
+    val forward: Boolean,
+    val capitalUsd: Double,
+    /** الصافي المعروض على البطاقة أصلاً (مبني على أفضل سعر فقط - مرجعي للمقارنة) */
+    val topOfBookNetProfitUsd: Double,
+    /** المبلغ النهائي الحقيقي بعد المشي عبر العمق الفعلي للثلاث خطوات - null لو تعذر الفحص */
+    val depthAwareFinalUsd: Double?,
+    val depthAwareNetProfitUsd: Double?,
+    /** true لو عمق إحدى اللقطات الثلاث خلص قبل ما تتنفذ الكمية/المبلغ المطلوب بالكامل - يبقى الرقم "أسوأ حالة محتملة" مش دقيق 100% */
+    val depthExhausted: Boolean,
+    /** true لو البطاقة كانت عارضة ربح، لكن الفحص الحقيقي بعمق السوق كشف إن ده هيبقى خسارة فعلياً بسبب الانزلاق السعري */
+    val wouldBeLossFromSlippage: Boolean,
+    val errorMessage: String?,
+    val checkedAtMillis: Long,
+)
