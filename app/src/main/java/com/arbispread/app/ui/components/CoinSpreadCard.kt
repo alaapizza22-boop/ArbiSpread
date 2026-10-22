@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.arbispread.app.model.CoinSpreadResult
 import com.arbispread.app.model.ExchangeLinks
+import com.arbispread.app.model.MinimumOrderSize
 import com.arbispread.app.model.WithdrawalFees
 import com.arbispread.app.ui.Strings
 import com.arbispread.app.ui.theme.AccentCyan
@@ -49,6 +50,7 @@ import com.arbispread.app.ui.theme.BorderSubtle
 import com.arbispread.app.ui.theme.LossRed
 import com.arbispread.app.ui.theme.ProfitGreen
 import com.arbispread.app.ui.theme.TextSecondary
+import com.arbispread.app.ui.theme.WarnAmber
 import java.util.Locale
 import kotlin.math.abs
 
@@ -172,6 +174,18 @@ fun CoinSpreadCard(result: CoinSpreadResult, capitalUsd: Double, modifier: Modif
                     modifier = Modifier.padding(top = 6.dp)
                 )
 
+                // تحذير لو رأس المال المدخل أقل من الحد الأدنى النموذجي لصفقة واحدة على
+                // إحدى المنصتين - الصفقة غالباً هترفض فعلياً حتى لو النسبة% بتقول رابحة
+                MinimumOrderSize.firstBelowMinimum(capitalUsd, result.buy!!.exchangeName, result.sell!!.exchangeName)?.let { (exchangeName, minUsd) ->
+                    Text(
+                        text = Strings.t("min_order_warning_card") + " $exchangeName (min ~$" +
+                            String.format(Locale.US, "%.1f", minUsd) + ") " + Strings.t("min_order_typical_note"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = WarnAmber,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+
                 // زرار فحص السيولة الحية وحالة المحافظ - بيتسحب عند الطلب بس (مش تلقائي لكل عملة)
                 Button(
                     onClick = { showLiquidityDialog = true },
@@ -192,6 +206,7 @@ fun CoinSpreadCard(result: CoinSpreadResult, capitalUsd: Double, modifier: Modif
                         coin = result.coin,
                         buyExchange = result.buy!!.exchangeName,
                         sellExchange = result.sell!!.exchangeName,
+                        capitalUsd = capitalUsd,
                         onDismiss = { showLiquidityDialog = false }
                     )
                 }

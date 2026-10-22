@@ -23,6 +23,7 @@ import com.arbispread.app.data.ApiKeyStore
 import com.arbispread.app.data.LiquidityRepository
 import com.arbispread.app.model.CoinDef
 import com.arbispread.app.model.LiquidityCheckResult
+import com.arbispread.app.model.MinimumOrderSize
 import com.arbispread.app.model.NetworkTransferTime
 import com.arbispread.app.model.WalletNetworkStatus
 import com.arbispread.app.model.WithdrawalFees
@@ -44,6 +45,7 @@ fun LiquidityCheckDialog(
     coin: CoinDef,
     buyExchange: String,
     sellExchange: String,
+    capitalUsd: Double,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -136,6 +138,19 @@ fun LiquidityCheckDialog(
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 4.dp)
                         )
+
+                        // تحذير لو رأس المال أقل من الحد الأدنى النموذجي لصفقة واحدة على
+                        // إحدى المنصتين - الصفقة غالباً هترفض فعلياً حتى لو الأرقام رابحة
+                        MinimumOrderSize.firstBelowMinimum(capitalUsd, buyExchange, sellExchange)?.let { (exchangeName, minUsd) ->
+                            Text(
+                                "⚠️ $exchangeName: " + Strings.t("min_order_warning_detail") +
+                                    " (min ~$" + String.format(Locale.US, "%.1f", minUsd) + ") " +
+                                    Strings.t("min_order_typical_note"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = WarnAmber,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
 
                         Text(
                             Strings.t("wallet_status_title"),

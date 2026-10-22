@@ -2,6 +2,7 @@ package com.arbispread.app.data
 
 import com.arbispread.app.model.BookQuote
 import com.arbispread.app.model.CoinDef
+import com.arbispread.app.model.NetworkFeeOption
 import com.arbispread.app.model.OrderBookLevel
 import com.arbispread.app.model.OrderBookSnapshot
 import com.arbispread.app.model.WalletNetworkStatus
