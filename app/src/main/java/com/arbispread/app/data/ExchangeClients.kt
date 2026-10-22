@@ -226,6 +226,20 @@ object ExchangeClients {
         else -> null
     }
 
+    /**
+     * زي [fetchDepthFor] بالظبط لكن بياخد رمز الزوج الخام مباشرة بدل [CoinDef] - مستخدمة
+     * في التداول الثلاثي لأن زوج التقاطع (مثل ETHBTC) مش زوج USDT عادي موجود في CoinDef.
+     * الرمز لازم يكون بصيغة المنصة الصحيحة أصلاً (مثلاً "ETHBTC" لـ Binance أو "ETH-BTC" لـ OKX).
+     */
+    suspend fun fetchDepthForSymbol(exchangeName: String, symbol: String): OrderBookSnapshot? = when (exchangeName) {
+        "Binance" -> fetchBinanceDepth(symbol)
+        "Bybit" -> fetchBybitDepth(symbol)
+        "OKX" -> fetchOkxDepth(symbol)
+        "KuCoin" -> fetchKucoinDepth(symbol)
+        "Gate.io" -> fetchGateioDepth(symbol)
+        else -> null
+    }
+
     // ---------------------------------------------------------------------
     // حالة الإيداع/السحب (Wallet Network Status)
     // **تنبيه صريح**: Binance و Bybit و OKX ماعندهمش Endpoint عام (من غير مفتاح API
