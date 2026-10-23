@@ -18,6 +18,8 @@ object ExchangeLinks {
         "OKX" -> "https://www.okx.com/trade-spot/${coinId.lowercase()}-usdt"
         "KuCoin" -> "https://www.kucoin.com/trade/${coinId}-USDT"
         "Gate.io" -> "https://www.gate.io/trade/${coinId}_USDT"
+        "Bitget" -> "https://www.bitget.com/spot/${coinId}USDT"
+        "MEXC" -> "https://www.mexc.com/exchange/${coinId}_USDT"
         else -> null
     }
 

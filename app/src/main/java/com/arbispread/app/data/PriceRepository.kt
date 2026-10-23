@@ -15,7 +15,7 @@ data class PriceRefreshResult(
 class PriceRepository(private val coins: List<CoinDef>) {
 
     /**
-     * بيسحب الأسعار من المنصات الخمس (كلها أزواج USDT) بالتوازي مرة واحدة بس، وبعدين
+     * بيسحب الأسعار من المنصات السبع (كلها أزواج USDT) بالتوازي مرة واحدة بس، وبعدين
      * يبني مقارنة السبريد بين المنصات لكل عملة.
      */
     suspend fun refreshAll(
@@ -29,12 +29,16 @@ class PriceRepository(private val coins: List<CoinDef>) {
         val okxDeferred = async { ExchangeClients.fetchOkx() }
         val kucoinDeferred = async { ExchangeClients.fetchKucoin() }
         val gateioDeferred = async { ExchangeClients.fetchGateio() }
+        val bitgetDeferred = async { ExchangeClients.fetchBitget() }
+        val mexcDeferred = async { ExchangeClients.fetchMexc() }
 
         val binance = binanceDeferred.await()
         val bybit = bybitDeferred.await()
         val okx = okxDeferred.await()
         val kucoin = kucoinDeferred.await()
         val gateio = gateioDeferred.await()
+        val bitget = bitgetDeferred.await()
+        val mexc = mexcDeferred.await()
 
         // رسوم سحب وحالة محفظة حقيقية - نداء موقّع واحد بس لكل منصة من الثلاثة دي لو
         // المستخدم معاه مفتاح شخصي مُفعّل لها (مش لكل عملة على حدة، عشان نحترم حدود الطلبات)
@@ -86,6 +90,14 @@ class PriceRepository(private val coins: List<CoinDef>) {
                 gateio[coin.gateioSymbol]?.let {
                     val (fee, verified) = withdrawalFeeFor("Gate.io", it)
                     add(ExchangeQuote("Gate.io", it, fees.gateio, fee, verified))
+                }
+                bitget[coin.bitgetSymbol]?.let {
+                    val (fee, verified) = withdrawalFeeFor("Bitget", it)
+                    add(ExchangeQuote("Bitget", it, fees.bitget, fee, verified))
+                }
+                mexc[coin.mexcSymbol]?.let {
+                    val (fee, verified) = withdrawalFeeFor("MEXC", it)
+                    add(ExchangeQuote("MEXC", it, fees.mexc, fee, verified))
                 }
             }
 

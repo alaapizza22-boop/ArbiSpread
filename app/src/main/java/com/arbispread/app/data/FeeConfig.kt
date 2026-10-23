@@ -11,6 +11,8 @@ import android.content.Context
  *   - OKX     : 0.10% (Spot, Regular/Lv.1 user)
  *   - KuCoin  : 0.10% (Spot, Regular user)
  *   - Gate.io : 0.20% (Spot, Regular user)
+ *   - Bitget  : 0.10% (Spot, Regular user)
+ *   - MEXC    : 0.20% (Spot, Regular user - MEXC أحياناً بيطلع عروض 0% مؤقتة، اتأكد من حسابك)
  *
  * ملحوظتين مهمتين لازم تكونا واضحتين:
  * 1. العمولة الفعلية بتختلف حسب مستوى حسابك (VIP tiers حسب حجم تداولك الشهري) وخصومات
@@ -28,6 +30,8 @@ data class FeeConfig(
     var okx: Double = 0.10,
     var kucoin: Double = 0.10,
     var gateio: Double = 0.20,
+    var bitget: Double = 0.10,
+    var mexc: Double = 0.20,
 
     /**
      * عمولة سحب شبكة التحويل (Network Withdrawal Fee) بالدولار - لازم تدخلها إنت يدوياً
@@ -60,6 +64,8 @@ data class FeeConfig(
         "OKX" -> okx
         "KuCoin" -> kucoin
         "Gate.io" -> gateio
+        "Bitget" -> bitget
+        "MEXC" -> mexc
         else -> 0.1
     }
 
@@ -80,6 +86,8 @@ data class FeeConfig(
                 okx = prefs.getFloat("fee_okx", 0.10f).toDouble(),
                 kucoin = prefs.getFloat("fee_kucoin", 0.10f).toDouble(),
                 gateio = prefs.getFloat("fee_gateio", 0.20f).toDouble(),
+                bitget = prefs.getFloat("fee_bitget", 0.10f).toDouble(),
+                mexc = prefs.getFloat("fee_mexc", 0.20f).toDouble(),
                 withdrawalFeeUsd = prefs.getFloat("fee_withdrawal_usd", 0.0f).toDouble(),
                 binanceFuturesTaker = prefs.getFloat("fee_binance_futures_taker", 0.05f).toDouble(),
                 bybitFuturesTaker = prefs.getFloat("fee_bybit_futures_taker", 0.055f).toDouble(),
@@ -94,6 +102,8 @@ data class FeeConfig(
                 .putFloat("fee_okx", config.okx.toFloat())
                 .putFloat("fee_kucoin", config.kucoin.toFloat())
                 .putFloat("fee_gateio", config.gateio.toFloat())
+                .putFloat("fee_bitget", config.bitget.toFloat())
+                .putFloat("fee_mexc", config.mexc.toFloat())
                 .putFloat("fee_withdrawal_usd", config.withdrawalFeeUsd.toFloat())
                 .putFloat("fee_binance_futures_taker", config.binanceFuturesTaker.toFloat())
                 .putFloat("fee_bybit_futures_taker", config.bybitFuturesTaker.toFloat())

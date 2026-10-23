@@ -25,11 +25,14 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,6 +44,7 @@ import java.util.Date
 import java.util.Locale
 import com.arbispread.app.ads.AdsManager
 import com.arbispread.app.model.FREE_COIN_LIMIT
+import com.arbispread.app.model.STABLECOIN_IDS
 import com.arbispread.app.ui.Strings
 import com.arbispread.app.ui.components.BannerAdView
 import com.arbispread.app.ui.components.CoinSpreadCard
@@ -62,6 +66,10 @@ fun HomeScreen(
     onFilterChange: (Boolean) -> Unit,
 ) {
     var capitalText by remember { mutableStateOf(state.capitalUsd.toInt().toString()) }
+    // تاب "الكل" بيعرض كل العملات زي ما هو دايماً، وتاب "الستيبل كوين" بيفلتر على
+    // الـ4 عملات المستقرة بس (STABLECOIN_IDS) - عشان متتدفنش تحت عملات متقلبة زي BTC
+    // اللي فروقها أكبر بكتير وبترتب فوق في الترتيب العادي
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
         containerColor = BgDeep,
@@ -98,6 +106,32 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = BgDeep,
+                contentColor = AccentCyan,
+            ) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text(Strings.t("tab_arbitrage")) },
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text(Strings.t("tab_stablecoins")) },
+                )
+            }
+
+            if (selectedTab == 1) {
+                Text(
+                    Strings.t("stablecoins_section_hint"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+
             // رأس المال + فلتر الفرص الرابحة فقط
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 OutlinedTextField(
@@ -167,14 +201,38 @@ fun HomeScreen(
                     return@Box
                 }
 
+                // تاب "الستيبل كوين" بيقصر النتايج على الـ4 عملات المستقرة بس قبل أي
+                // ترتيب أو فلترة تانية - عشان العملات دي تفضل ظاهرة في قسمها الخاص
+                // من غير ما تتدفن تحت عملات متقلبة فروقها أكبر بكتير
+                val scopedResults = if (selectedTab == 1) {
+                    state.results.filter { it.coin.id in STABLECOIN_IDS }
+                } else {
+                    state.results
+                }
+
                 // بنرتّب دايماً من الأعلى ربحاً للأقل (العملات غير القابلة للحساب
                 // بتنزل لآخر القايمة) - عشان أفضل فرصة فعلية تبقى أول حاجة يشوفها
                 // المستخدم، مش بترتيب ثابت حسب قايمة العملات الأصلية
-                val sortedResults = state.results.sortedByDescending { it.netProfitPercent(state.capitalUsd) ?: Double.NEGATIVE_INFINITY }
+                val sortedResults = scopedResults.sortedByDescending { it.netProfitPercent(state.capitalUsd) ?: Double.NEGATIVE_INFINITY }
                 val filteredResults = if (state.filterProfitableOnly) {
                     sortedResults.filter { (it.netProfitPercent(state.capitalUsd) ?: -1.0) > 0.0 }
                 } else {
                     sortedResults
+                }
+
+                if (selectedTab == 1 && filteredResults.isEmpty()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            Strings.t("stablecoins_empty"),
+                            color = TextSecondary,
+                            modifier = Modifier.padding(horizontal = 24.dp)
+                        )
+                    }
+                    return@Box
                 }
 
                 LazyColumn(
@@ -182,6 +240,9 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     itemsIndexed(filteredResults) { index, result ->
+                        // حد الاشتراك المجاني (FREE_COIN_LIMIT) بيتطبّق لكل تاب على حدة -
+                        // يعني لو المستخدم مش فاتح الاشتراك الكامل، أول FREE_COIN_LIMIT نتيجة
+                        // في تاب الستيبل كوين بيبانوا برضه حتى لو كانوا مقفولين في تاب الكل
                         if (index < FREE_COIN_LIMIT || state.unlockedAll) {
                             CoinSpreadCard(
                                 result,

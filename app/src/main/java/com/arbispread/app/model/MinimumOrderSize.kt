@@ -23,6 +23,8 @@ object MinimumOrderSize {
         "OKX" to 1.0,
         "KuCoin" to 0.1,
         "Gate.io" to 1.0,
+        "Bitget" to 5.0,
+        "MEXC" to 1.0,
     )
 
     fun minUsdFor(exchangeName: String): Double? = typicalMinUsd[exchangeName]

@@ -133,6 +133,38 @@ object ExchangeClients {
         result
     }
 
+    /** Bitget: منصة سادسة انضافت عشان سيولتها الكويسة على الستيبل كوين والعملات المتوسطة - نفس صيغة الرمز بتاعة Binance (مثل BTCUSDT) */
+    suspend fun fetchBitget(): Map<String, Double> = withContext(Dispatchers.IO) {
+        val body = get("https://api.bitget.com/api/v2/spot/market/tickers") ?: return@withContext emptyMap()
+        val result = HashMap<String, Double>()
+        try {
+            val data = JSONObject(body).optJSONArray("data") ?: return@withContext emptyMap()
+            for (i in 0 until data.length()) {
+                val obj = data.getJSONObject(i)
+                val symbol = obj.optString("symbol")
+                val price = obj.optString("lastPr").toDoubleOrNull()
+                if (symbol.isNotEmpty() && price != null) result[symbol] = price
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
+    /** MEXC: منصة سابعة انضافت لأنها بتدرج عملات جديدة بسرعة وأحياناً بتفارق في السعر عن باقي المنصات - API مطابق لـ Binance تقريباً (نفس صيغة الرمز مثل BTCUSDT) */
+    suspend fun fetchMexc(): Map<String, Double> = withContext(Dispatchers.IO) {
+        val body = get("https://api.mexc.com/api/v3/ticker/price") ?: return@withContext emptyMap()
+        val result = HashMap<String, Double>()
+        try {
+            val arr = JSONArray(body)
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val symbol = obj.optString("symbol")
+                val price = obj.optString("price").toDoubleOrNull()
+                if (symbol.isNotEmpty() && price != null) result[symbol] = price
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
     // ---------------------------------------------------------------------
     // عمق دفتر الطلبات (Order Book Depth) - بيتسحب عند الطلب بس (مش كل تحديث)
     // عشان ميتجاوزش حدود الطلبات (Rate Limits) بتاعة المنصات. كل دالة بترجع
@@ -216,6 +248,32 @@ object ExchangeClients {
         } catch (_: Exception) { null }
     }
 
+    suspend fun fetchBitgetDepth(symbol: String): OrderBookSnapshot? = withContext(Dispatchers.IO) {
+        val body = get("https://api.bitget.com/api/v2/spot/market/orderbook?symbol=$symbol&type=step0&limit=50") ?: return@withContext null
+        try {
+            val data = JSONObject(body).getJSONObject("data")
+            OrderBookSnapshot(
+                exchangeName = "Bitget",
+                asks = parseLevels(data.optJSONArray("asks")),
+                bids = parseLevels(data.optJSONArray("bids")),
+                fetchedAtMillis = System.currentTimeMillis(),
+            )
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun fetchMexcDepth(symbol: String): OrderBookSnapshot? = withContext(Dispatchers.IO) {
+        val body = get("https://api.mexc.com/api/v3/depth?symbol=$symbol&limit=100") ?: return@withContext null
+        try {
+            val root = JSONObject(body)
+            OrderBookSnapshot(
+                exchangeName = "MEXC",
+                asks = parseLevels(root.optJSONArray("asks")),
+                bids = parseLevels(root.optJSONArray("bids")),
+                fetchedAtMillis = System.currentTimeMillis(),
+            )
+        } catch (_: Exception) { null }
+    }
+
     /** بيرجّع دالة فحص العمق الصحيحة حسب اسم المنصة - أداة مساعدة لتوحيد الاستدعاء في LiquidityRepository */
     suspend fun fetchDepthFor(exchangeName: String, coin: CoinDef): OrderBookSnapshot? = when (exchangeName) {
         "Binance" -> fetchBinanceDepth(coin.binanceSymbol)
@@ -223,6 +281,8 @@ object ExchangeClients {
         "OKX" -> fetchOkxDepth(coin.okxInstId)
         "KuCoin" -> fetchKucoinDepth(coin.kucoinSymbol)
         "Gate.io" -> fetchGateioDepth(coin.gateioSymbol)
+        "Bitget" -> fetchBitgetDepth(coin.bitgetSymbol)
+        "MEXC" -> fetchMexcDepth(coin.mexcSymbol)
         else -> null
     }
 
@@ -237,6 +297,8 @@ object ExchangeClients {
         "OKX" -> fetchOkxDepth(symbol)
         "KuCoin" -> fetchKucoinDepth(symbol)
         "Gate.io" -> fetchGateioDepth(symbol)
+        "Bitget" -> fetchBitgetDepth(symbol)
+        "MEXC" -> fetchMexcDepth(symbol)
         else -> null
     }
 
@@ -323,7 +385,7 @@ object ExchangeClients {
     suspend fun fetchWalletStatusFor(exchangeName: String, coinId: String): WalletNetworkStatus? = when (exchangeName) {
         "KuCoin" -> fetchKucoinWalletStatus(coinId)
         "Gate.io" -> fetchGateioWalletStatus(coinId)
-        else -> null // Binance/Bybit/OKX: مفيش Endpoint عام - استخدم fetchWalletStatusWithKey لو المستخدم معاه مفتاح شخصي
+        else -> null // Binance/Bybit/OKX/Bitget/MEXC: مفيش Endpoint عام موثّق - استخدم fetchWalletStatusWithKey لو المستخدم معاه مفتاح شخصي (متاح حالياً لـ Binance/Bybit/OKX بس)
     }
 
     // ---------------------------------------------------------------------

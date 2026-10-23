@@ -53,6 +53,8 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
     var okx by remember { mutableStateOf(initial.okx.toString()) }
     var kucoin by remember { mutableStateOf(initial.kucoin.toString()) }
     var gateio by remember { mutableStateOf(initial.gateio.toString()) }
+    var bitget by remember { mutableStateOf(initial.bitget.toString()) }
+    var mexc by remember { mutableStateOf(initial.mexc.toString()) }
     var withdrawalFee by remember { mutableStateOf(initial.withdrawalFeeUsd.toString()) }
     var binanceFuturesTaker by remember { mutableStateOf(initial.binanceFuturesTaker.toString()) }
     var bybitFuturesTaker by remember { mutableStateOf(initial.bybitFuturesTaker.toString()) }
@@ -96,6 +98,8 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
             FeeField("OKX", okx) { okx = it }
             FeeField("KuCoin", kucoin) { kucoin = it }
             FeeField("Gate.io", gateio) { gateio = it }
+            FeeField("Bitget", bitget) { bitget = it }
+            FeeField("MEXC", mexc) { mexc = it }
 
             FeeField(Strings.t("withdrawal_fee"), withdrawalFee) { withdrawalFee = it }
             Text(
@@ -112,6 +116,8 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                         okx = okx.toDoubleOrNull() ?: initial.okx,
                         kucoin = kucoin.toDoubleOrNull() ?: initial.kucoin,
                         gateio = gateio.toDoubleOrNull() ?: initial.gateio,
+                        bitget = bitget.toDoubleOrNull() ?: initial.bitget,
+                        mexc = mexc.toDoubleOrNull() ?: initial.mexc,
                         withdrawalFeeUsd = withdrawalFee.toDoubleOrNull() ?: initial.withdrawalFeeUsd,
                         // عمولة فيوتشرز الفاندينج اتشالت من الواجهة بعد حذف تبويب الفاندينج،
                         // بنحافظ على القيمة المخزنة زي ما هي من غير ما نعرضها أو نعدّلها
