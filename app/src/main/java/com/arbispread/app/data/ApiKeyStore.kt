@@ -23,9 +23,10 @@ data class ExchangeApiKey(
  * على جهازه هو، مشفّر بمفتاح جهازه هو - مفيش مشاركة أو تسريب لمستخدمين تانيين حتى
  * لو حد فكّك ملف الـ APK نفسه.
  *
- * **تنبيه مهم:** التخزين هنا بس - التطبيق **لسه مش بيستخدم** المفاتيح دي في أي نداء
- * API فعلي (لا للقراءة ولا غيرها). ده هيتفعّل في خطوة قادمة منفصلة. حفظ المفتاح هنا
- * دلوقتي مش هيغيّر أي رقم ظاهر في التطبيق لحد ما يتفعّل الاستخدام الفعلي.
+ * **تنبيه مهم:** المفتاح هنا بيتستخدم بس في نداءات **قراءة فقط** (رسوم سحب، حالة محفظة،
+ * عمولة تداول فعلية) - مفيش أي نداء تداول أو سحب فعلي بيستخدم المفتاح ده خالص. اتأكد
+ * إن المفتاح اللي بتولّده من حسابك معاه صلاحية "قراءة" (Read-Only) بس من غير صلاحية
+ * تداول أو سحب، عشان حماية إضافية حتى لو حصل أي تسريب.
  */
 object ApiKeyStore {
     private const val PREFS_NAME = "arbi_spread_secure_keys"
@@ -39,10 +40,11 @@ object ApiKeyStore {
     )
 
     /** أسماء المنصات المدعومة بالترتيب اللي بتتعرض بيه في الواجهة */
-    val SUPPORTED_EXCHANGES = listOf("Binance", "Bybit", "OKX", "KuCoin", "Gate.io")
+    val SUPPORTED_EXCHANGES = listOf("Binance", "Bybit", "OKX", "KuCoin", "Gate.io", "Bitget", "MEXC")
 
     /** المنصات اللي محتاجة Passphrase إضافي غير API Key وSecret */
-    fun requiresPassphrase(exchangeName: String): Boolean = exchangeName == "OKX" || exchangeName == "KuCoin"
+    fun requiresPassphrase(exchangeName: String): Boolean =
+        exchangeName == "OKX" || exchangeName == "KuCoin" || exchangeName == "Bitget"
 
     fun load(context: Context, exchangeName: String): ExchangeApiKey {
         val p = prefs(context)

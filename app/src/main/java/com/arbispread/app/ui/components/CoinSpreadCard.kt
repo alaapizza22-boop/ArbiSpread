@@ -169,6 +169,16 @@ fun CoinSpreadCard(
                         Strings.t("withdrawal_fee_short") + ": -$" + String.format(Locale.US, "%.2f", breakdown.withdrawalFeeUsd) +
                             if (networkName != null) " (${Strings.t("network_label")}: $networkName)" else ""
                     )
+                    // لو عمولة التداول جاية من مفتاح المستخدم الشخصي (عمولة حسابه الفعلية)
+                    // بدل القيمة الافتراضية، نوضح ده صراحة عشان يثق في الرقم أكتر
+                    if (breakdown.isFeeVerified) {
+                        Text(
+                            Strings.t("fee_verified_live_note"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = TextSecondary,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
                 }
 
                 Text(

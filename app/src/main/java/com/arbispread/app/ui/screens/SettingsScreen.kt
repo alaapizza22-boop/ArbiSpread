@@ -40,7 +40,6 @@ import com.arbispread.app.ui.theme.BgCard
 import com.arbispread.app.ui.theme.BgDeep
 import com.arbispread.app.ui.theme.BorderSubtle
 import com.arbispread.app.ui.theme.TextSecondary
-import com.arbispread.app.ui.theme.WarnAmber
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,7 +147,7 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
             Text(
                 Strings.t("api_keys_not_active_yet"),
                 style = MaterialTheme.typography.labelSmall,
-                color = WarnAmber
+                color = TextSecondary
             )
 
             ApiKeyStore.SUPPORTED_EXCHANGES.forEachIndexed { index, exchangeName ->

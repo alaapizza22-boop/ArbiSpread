@@ -20,8 +20,9 @@ class PriceRepository(private val coins: List<CoinDef>) {
      */
     suspend fun refreshAll(
         fees: FeeConfig,
-        /** مفاتيح المستخدم الشخصية المفعّلة (لو موجودة) - بتتستخدم بس لـ Binance/Bybit/OKX
-         * عشان تجيب رسوم سحب وحالة محفظة حقيقية بنداء موقّع واحد بس لكل منصة (مش لكل عملة) */
+        /** مفاتيح المستخدم الشخصية المفعّلة (لو موجودة) - بتتستخدم لجلب رسوم سحب وعمولة
+         * تداول حقيقية بنداء موقّع واحد بس لكل منصة (مش لكل عملة)، لأي منصة من السبعة
+         * المستخدم مدخّل لها مفتاح مُفعّل */
         apiKeys: Map<String, ExchangeApiKey> = emptyMap(),
     ): PriceRefreshResult = coroutineScope {
         val binanceDeferred = async { ExchangeClients.fetchBinance() }
@@ -40,8 +41,10 @@ class PriceRepository(private val coins: List<CoinDef>) {
         val bitget = bitgetDeferred.await()
         val mexc = mexcDeferred.await()
 
-        // رسوم سحب وحالة محفظة حقيقية - نداء موقّع واحد بس لكل منصة من الثلاثة دي لو
-        // المستخدم معاه مفتاح شخصي مُفعّل لها (مش لكل عملة على حدة، عشان نحترم حدود الطلبات)
+        // رسوم سحب حقيقية - نداء موقّع واحد بس لكل منصة من الثلاثة دي لو المستخدم معاه
+        // مفتاح شخصي مُفعّل لها (مش لكل عملة على حدة، عشان نحترم حدود الطلبات). رسوم
+        // السحب الحية متاحة حالياً لـ Binance/Bybit/OKX بس (الوحيدين اللي معندهمش
+        // Endpoint عام، فمحتاجين المفتاح أصلاً - KuCoin/Gate.io عندهم Endpoint عام بالفعل)
         val liveWithdrawalDeferred = listOf("Binance", "Bybit", "OKX").associateWith { exchangeName ->
             async {
                 val key = apiKeys[exchangeName]
@@ -53,6 +56,21 @@ class PriceRepository(private val coins: List<CoinDef>) {
             }
         }
         val liveWithdrawal = liveWithdrawalDeferred.mapValues { it.value.await() }
+
+        // عمولة تداول (Taker Fee %) حية - نداء موقّع واحد بس لكل منصة من السبعة لو
+        // المستخدم معاه مفتاح شخصي مُفعّل لها، عشان نجيب نسبة عمولة حسابه الفعلية بدل
+        // القيمة الافتراضية الثابتة في الإعدادات
+        val liveTradingFeeDeferred = ApiKeyStore.SUPPORTED_EXCHANGES.associateWith { exchangeName ->
+            async {
+                val key = apiKeys[exchangeName]
+                if (key != null && key.isConfigured) {
+                    ExchangeClients.fetchTradingFeeWithKey(exchangeName, key)
+                } else {
+                    null
+                }
+            }
+        }
+        val liveTradingFee = liveTradingFeeDeferred.mapValues { it.value.await() }
 
         val spreadResults = coins.map { coin ->
             /**
@@ -70,34 +88,54 @@ class PriceRepository(private val coins: List<CoinDef>) {
                 return fees.withdrawalFeeUsd to false
             }
 
+            /**
+             * عمولة التداول لكل Quote بتتحسب بالأولوية التالية:
+             * 1. نداء حي موقّع بمفتاح المستخدم الشخصي (لو مُدخل ومُفعّل لهذه المنصة) ->
+             *    عمولة حسابه الفعلية -> "محقق حي" (isFeeVerified = true).
+             * 2. القيمة الافتراضية من شاشة الإعدادات -> "غير محقق" (ممكن تكون مختلفة
+             *    عن عمولة حسابه الحقيقية لو عنده خصم VIP أو توكن).
+             */
+            fun tradingFeeFor(exchangeName: String, default: Double): Pair<Double, Boolean> {
+                val live = liveTradingFee[exchangeName]
+                if (live != null) return live to true
+                return default to false
+            }
+
             val quotes = buildList {
                 binance[coin.binanceSymbol]?.let {
-                    val (fee, verified) = withdrawalFeeFor("Binance", it)
-                    add(ExchangeQuote("Binance", it, fees.binance, fee, verified))
+                    val (withdrawalFee, withdrawalVerified) = withdrawalFeeFor("Binance", it)
+                    val (fee, feeVerified) = tradingFeeFor("Binance", fees.binance)
+                    add(ExchangeQuote("Binance", it, fee, withdrawalFee, withdrawalVerified, feeVerified))
                 }
                 bybit[coin.bybitSymbol]?.let {
-                    val (fee, verified) = withdrawalFeeFor("Bybit", it)
-                    add(ExchangeQuote("Bybit", it, fees.bybit, fee, verified))
+                    val (withdrawalFee, withdrawalVerified) = withdrawalFeeFor("Bybit", it)
+                    val (fee, feeVerified) = tradingFeeFor("Bybit", fees.bybit)
+                    add(ExchangeQuote("Bybit", it, fee, withdrawalFee, withdrawalVerified, feeVerified))
                 }
                 okx[coin.okxInstId]?.let {
-                    val (fee, verified) = withdrawalFeeFor("OKX", it)
-                    add(ExchangeQuote("OKX", it, fees.okx, fee, verified))
+                    val (withdrawalFee, withdrawalVerified) = withdrawalFeeFor("OKX", it)
+                    val (fee, feeVerified) = tradingFeeFor("OKX", fees.okx)
+                    add(ExchangeQuote("OKX", it, fee, withdrawalFee, withdrawalVerified, feeVerified))
                 }
                 kucoin[coin.kucoinSymbol]?.let {
-                    val (fee, verified) = withdrawalFeeFor("KuCoin", it)
-                    add(ExchangeQuote("KuCoin", it, fees.kucoin, fee, verified))
+                    val (withdrawalFee, withdrawalVerified) = withdrawalFeeFor("KuCoin", it)
+                    val (fee, feeVerified) = tradingFeeFor("KuCoin", fees.kucoin)
+                    add(ExchangeQuote("KuCoin", it, fee, withdrawalFee, withdrawalVerified, feeVerified))
                 }
                 gateio[coin.gateioSymbol]?.let {
-                    val (fee, verified) = withdrawalFeeFor("Gate.io", it)
-                    add(ExchangeQuote("Gate.io", it, fees.gateio, fee, verified))
+                    val (withdrawalFee, withdrawalVerified) = withdrawalFeeFor("Gate.io", it)
+                    val (fee, feeVerified) = tradingFeeFor("Gate.io", fees.gateio)
+                    add(ExchangeQuote("Gate.io", it, fee, withdrawalFee, withdrawalVerified, feeVerified))
                 }
                 bitget[coin.bitgetSymbol]?.let {
-                    val (fee, verified) = withdrawalFeeFor("Bitget", it)
-                    add(ExchangeQuote("Bitget", it, fees.bitget, fee, verified))
+                    val (withdrawalFee, withdrawalVerified) = withdrawalFeeFor("Bitget", it)
+                    val (fee, feeVerified) = tradingFeeFor("Bitget", fees.bitget)
+                    add(ExchangeQuote("Bitget", it, fee, withdrawalFee, withdrawalVerified, feeVerified))
                 }
                 mexc[coin.mexcSymbol]?.let {
-                    val (fee, verified) = withdrawalFeeFor("MEXC", it)
-                    add(ExchangeQuote("MEXC", it, fees.mexc, fee, verified))
+                    val (withdrawalFee, withdrawalVerified) = withdrawalFeeFor("MEXC", it)
+                    val (fee, feeVerified) = tradingFeeFor("MEXC", fees.mexc)
+                    add(ExchangeQuote("MEXC", it, fee, withdrawalFee, withdrawalVerified, feeVerified))
                 }
             }
 

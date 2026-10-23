@@ -566,6 +566,187 @@ object ExchangeClients {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // عمولة التداول الفعلية (Live Taker Fee %) - نداءات موقّعة بمفتاح المستخدم الشخصي
+    // تجيب نسبة عمولتك الحقيقية (بعد أي خصم VIP/توكن) بدل القيمة الافتراضية الثابتة
+    // في الإعدادات. كل دالة بترجع null بهدوء لو أي خطوة فشلت (مفتاح غلط، صلاحيات
+    // ناقصة، شكل رد مختلف عن المتوقع) - التطبيق يرجع تلقائياً للقيمة الافتراضية
+    // من غير كراش ومن غير رقم مختلق.
+    //
+    // ⚠️ نفس التنبيه بتاع نداءات رسوم السحب فوق: التوقيع هنا مبني على توثيق كل منصة
+    // وقت كتابة الكود، ومستحيل نختبره فعلياً من بيئة التطوير دي - أول اختبار حقيقي
+    // لازم يحصل على جهاز المستخدم نفسه بمفتاحه الحقيقي.
+    // ---------------------------------------------------------------------
+
+    /** Binance: /api/v3/account (موقّع) - commissionRates.taker نسبة عشرية (مثلاً "0.00100000" = 0.1%) */
+    suspend fun fetchBinanceTradingFee(apiKey: String, secretKey: String): Double? = withContext(Dispatchers.IO) {
+        try {
+            val timestamp = System.currentTimeMillis()
+            val query = "timestamp=$timestamp&recvWindow=10000"
+            val signature = Signing.hmacSha256Hex(secretKey, query)
+            val url = "https://api.binance.com/api/v3/account?$query&signature=$signature"
+            val body = getWithHeaders(url, mapOf("X-MBX-APIKEY" to apiKey)) ?: return@withContext null
+            val root = JSONObject(body)
+            val rates = root.optJSONObject("commissionRates")
+            val taker = rates?.optString("taker")?.toDoubleOrNull()
+            taker?.times(100.0)
+        } catch (_: Exception) { null }
+    }
+
+    /** Bybit v5: /v5/account/fee-rate?category=spot (موقّع) - takerFeeRate لأول صف في القائمة */
+    suspend fun fetchBybitTradingFee(apiKey: String, secretKey: String): Double? = withContext(Dispatchers.IO) {
+        try {
+            val timestamp = System.currentTimeMillis().toString()
+            val recvWindow = "10000"
+            val queryString = "category=spot"
+            val signaturePayload = timestamp + apiKey + recvWindow + queryString
+            val signature = Signing.hmacSha256Hex(secretKey, signaturePayload)
+            val url = "https://api.bybit.com/v5/account/fee-rate?$queryString"
+            val body = getWithHeaders(
+                url,
+                mapOf(
+                    "X-BAPI-API-KEY" to apiKey,
+                    "X-BAPI-TIMESTAMP" to timestamp,
+                    "X-BAPI-RECV-WINDOW" to recvWindow,
+                    "X-BAPI-SIGN" to signature,
+                )
+            ) ?: return@withContext null
+            val list = JSONObject(body).getJSONObject("result").getJSONArray("list")
+            if (list.length() == 0) return@withContext null
+            list.getJSONObject(0).optString("takerFeeRate").toDoubleOrNull()?.times(100.0)
+        } catch (_: Exception) { null }
+    }
+
+    /** OKX: /api/v5/account/trade-fee?instType=SPOT (موقّع) - taker بترجع بالسالب (تكلفة) فبناخد القيمة المطلقة */
+    suspend fun fetchOkxTradingFee(apiKey: String, secretKey: String, passphrase: String): Double? = withContext(Dispatchers.IO) {
+        try {
+            val requestPath = "/api/v5/account/trade-fee?instType=SPOT"
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+            sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            val timestamp = sdf.format(java.util.Date())
+            val signaturePayload = timestamp + "GET" + requestPath
+            val signature = Signing.hmacSha256Base64(secretKey, signaturePayload)
+            val url = "https://www.okx.com$requestPath"
+            val body = getWithHeaders(
+                url,
+                mapOf(
+                    "OK-ACCESS-KEY" to apiKey,
+                    "OK-ACCESS-SIGN" to signature,
+                    "OK-ACCESS-TIMESTAMP" to timestamp,
+                    "OK-ACCESS-PASSPHRASE" to passphrase,
+                )
+            ) ?: return@withContext null
+            val data = JSONObject(body).getJSONArray("data")
+            if (data.length() == 0) return@withContext null
+            val taker = data.getJSONObject(0).optString("taker").toDoubleOrNull() ?: return@withContext null
+            kotlin.math.abs(taker) * 100.0
+        } catch (_: Exception) { null }
+    }
+
+    /** KuCoin: /api/v1/base-fee (موقّع، محتاج Passphrase مشفّر كمان - API-KEY-VERSION 2) - takerFeeRate */
+    suspend fun fetchKucoinTradingFee(apiKey: String, secretKey: String, passphrase: String): Double? = withContext(Dispatchers.IO) {
+        try {
+            val requestPath = "/api/v1/base-fee"
+            val timestamp = System.currentTimeMillis().toString()
+            val signaturePayload = timestamp + "GET" + requestPath
+            val signature = Signing.hmacSha256Base64(secretKey, signaturePayload)
+            // KuCoin API-KEY-VERSION 2: الـ Passphrase نفسه لازم يتوقّع بنفس الـ Secret قبل ما يتبعت
+            val signedPassphrase = Signing.hmacSha256Base64(secretKey, passphrase)
+            val url = "https://api.kucoin.com$requestPath"
+            val body = getWithHeaders(
+                url,
+                mapOf(
+                    "KC-API-KEY" to apiKey,
+                    "KC-API-SIGN" to signature,
+                    "KC-API-TIMESTAMP" to timestamp,
+                    "KC-API-PASSPHRASE" to signedPassphrase,
+                    "KC-API-KEY-VERSION" to "2",
+                )
+            ) ?: return@withContext null
+            val data = JSONObject(body).optJSONObject("data") ?: return@withContext null
+            data.optString("takerFeeRate").toDoubleOrNull()?.times(100.0)
+        } catch (_: Exception) { null }
+    }
+
+    /** Gate.io: /api/v4/wallet/fee (موقّع بـ SHA512 - الوحيدة من السبعة بالتوقيع ده) - taker_fee */
+    suspend fun fetchGateioTradingFee(apiKey: String, secretKey: String): Double? = withContext(Dispatchers.IO) {
+        try {
+            val method = "GET"
+            val requestPath = "/api/v4/wallet/fee"
+            val queryString = ""
+            val bodyHash = Signing.sha512Hex("")
+            val timestamp = (System.currentTimeMillis() / 1000).toString()
+            val signaturePayload = "$method\n$requestPath\n$queryString\n$bodyHash\n$timestamp"
+            val signature = Signing.hmacSha512Hex(secretKey, signaturePayload)
+            val url = "https://api.gateio.ws$requestPath"
+            val body = getWithHeaders(
+                url,
+                mapOf(
+                    "KEY" to apiKey,
+                    "SIGN" to signature,
+                    "Timestamp" to timestamp,
+                )
+            ) ?: return@withContext null
+            JSONObject(body).optString("taker_fee").toDoubleOrNull()?.times(100.0)
+        } catch (_: Exception) { null }
+    }
+
+    /** Bitget: /api/v2/common/trade-rate?symbol=BTCUSDT&business=spot (موقّع، محتاج Passphrase زي OKX) - takerFeeRate */
+    suspend fun fetchBitgetTradingFee(apiKey: String, secretKey: String, passphrase: String): Double? = withContext(Dispatchers.IO) {
+        try {
+            val requestPath = "/api/v2/common/trade-rate"
+            val queryString = "?symbol=BTCUSDT&business=spot"
+            val timestamp = System.currentTimeMillis().toString()
+            val signaturePayload = timestamp + "GET" + requestPath + queryString
+            val signature = Signing.hmacSha256Base64(secretKey, signaturePayload)
+            val url = "https://api.bitget.com$requestPath$queryString"
+            val body = getWithHeaders(
+                url,
+                mapOf(
+                    "ACCESS-KEY" to apiKey,
+                    "ACCESS-SIGN" to signature,
+                    "ACCESS-TIMESTAMP" to timestamp,
+                    "ACCESS-PASSPHRASE" to passphrase,
+                )
+            ) ?: return@withContext null
+            val data = JSONObject(body).optJSONObject("data") ?: return@withContext null
+            data.optString("takerFeeRate").toDoubleOrNull()?.times(100.0)
+        } catch (_: Exception) { null }
+    }
+
+    /** MEXC: /api/v3/tradeFee?symbol=BTCUSDT (موقّع، نفس أسلوب Binance) - takerCommission */
+    suspend fun fetchMexcTradingFee(apiKey: String, secretKey: String): Double? = withContext(Dispatchers.IO) {
+        try {
+            val timestamp = System.currentTimeMillis()
+            val query = "symbol=BTCUSDT&timestamp=$timestamp&recvWindow=10000"
+            val signature = Signing.hmacSha256Hex(secretKey, query)
+            val url = "https://api.mexc.com/api/v3/tradeFee?$query&signature=$signature"
+            val body = getWithHeaders(url, mapOf("X-MEXC-APIKEY" to apiKey)) ?: return@withContext null
+            // بعض ردود MEXC بترجع كائن واحد مباشرة، وبعضها مصفوفة فيها صف واحد - بنتعامل مع الحالتين
+            val obj = try {
+                JSONArray(body).optJSONObject(0)
+            } catch (_: Exception) {
+                JSONObject(body)
+            } ?: return@withContext null
+            obj.optString("takerCommission").toDoubleOrNull()?.times(100.0)
+        } catch (_: Exception) { null }
+    }
+
+    /** دالة موحّدة: بتختار نداء عمولة التداول الحية الصح حسب المنصة لو المستخدم معاه مفتاح شخصي مُفعّل لها */
+    suspend fun fetchTradingFeeWithKey(exchangeName: String, key: ExchangeApiKey): Double? {
+        if (!key.isConfigured) return null
+        return when (exchangeName) {
+            "Binance" -> fetchBinanceTradingFee(key.apiKey, key.secretKey)
+            "Bybit" -> fetchBybitTradingFee(key.apiKey, key.secretKey)
+            "OKX" -> fetchOkxTradingFee(key.apiKey, key.secretKey, key.passphrase)
+            "KuCoin" -> fetchKucoinTradingFee(key.apiKey, key.secretKey, key.passphrase)
+            "Gate.io" -> fetchGateioTradingFee(key.apiKey, key.secretKey)
+            "Bitget" -> fetchBitgetTradingFee(key.apiKey, key.secretKey, key.passphrase)
+            "MEXC" -> fetchMexcTradingFee(key.apiKey, key.secretKey)
+            else -> null
+        }
+    }
+
     private fun String.toDoubleOrNull(): Double? = try {
         if (this.isBlank()) null else this.toDouble()
     } catch (e: NumberFormatException) {

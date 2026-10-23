@@ -13,6 +13,12 @@ data class ExchangeQuote(
      * كأنه رقم مؤكد.
      */
     val isWithdrawalFeeVerified: Boolean,
+    /**
+     * true لو takerFeePercent جاي من نداء حي موقّع بمفتاح المستخدم الشخصي المُفعّل
+     * (عمولة حسابه الفعلية بعد أي خصم VIP/توكن). false لو جاي من القيمة الافتراضية
+     * الثابتة في شاشة الإعدادات (مش مؤكدة لحسابه بالذات).
+     */
+    val isFeeVerified: Boolean = false,
 )
 
 /**
@@ -47,6 +53,8 @@ data class FeeBreakdown(
     val sellFeeUsd: Double,
     val withdrawalFeeUsd: Double,
     val isWithdrawalFeeVerified: Boolean,
+    /** true لو عمولتي الشراء والبيع (الاتنين مع بعض) جايين من نداء حي بمفتاح المستخدم - مش القيمة الافتراضية */
+    val isFeeVerified: Boolean,
     val netProfitUsd: Double,
 ) {
     /** صافي الربح كنسبة مئوية من رأس المال - محسوبة من الدولار الصافي، مش العكس */
@@ -114,6 +122,7 @@ data class CoinSpreadResult(
             sellFeeUsd = sellFeeUsd,
             withdrawalFeeUsd = withdrawalFeeUsd,
             isWithdrawalFeeVerified = b.isWithdrawalFeeVerified,
+            isFeeVerified = b.isFeeVerified && s.isFeeVerified,
             netProfitUsd = netProfitUsd,
         )
     }
