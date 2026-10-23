@@ -10,7 +10,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.arbispread.app.ads.AdsManager
 import com.arbispread.app.ui.screens.HomeScreen
 import com.arbispread.app.ui.screens.SettingsScreen
 import com.arbispread.app.ui.theme.ArbiSpreadTheme
@@ -21,13 +20,9 @@ private enum class Screen { HOME, SETTINGS }
 class MainActivity : ComponentActivity() {
 
     private val viewModel: ArbitrageViewModel by viewModels()
-    private lateinit var adsManager: AdsManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        adsManager = AdsManager(applicationContext)
-        adsManager.initialize()
 
         setContent {
             ArbiSpreadTheme {
@@ -37,12 +32,10 @@ class MainActivity : ComponentActivity() {
                 when (screen) {
                     Screen.HOME -> HomeScreen(
                         state = state,
-                        adsManager = adsManager,
-                        onUnlockRequested = {
-                            adsManager.showRewardedAd(this) {
-                                viewModel.unlockAllForSession()
-                            }
-                        },
+                        // الإعلانات اتشالت مؤقتاً (هترجع بمعرّفات AdMob حقيقية قبل
+                        // النشر على جوجل بلاي) - لحد ما ترجع، زرار الفتح بيفتح العملات
+                        // مباشرة من غير شرط مشاهدة إعلان
+                        onUnlockRequested = { viewModel.unlockAllForSession() },
                         onRefreshClick = { viewModel.refreshNow() },
                         onSettingsClick = { screen = Screen.SETTINGS },
                         onCapitalChange = { viewModel.setCapital(it) },

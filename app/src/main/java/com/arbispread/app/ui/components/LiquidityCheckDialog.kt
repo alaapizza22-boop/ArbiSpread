@@ -112,15 +112,6 @@ fun LiquidityCheckDialog(
                             )
                         }
 
-                        // تحذير صريح إن الربح المعروض نظري ولحظي، وإن السعر ممكن يتحرك
-                        // أثناء الوقت الفعلي اللي التحويل هياخده - مش بس وقت الفحص
-                        Text(
-                            Strings.t("transfer_time_risk_note"),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = WarnAmber,
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
-
                         // تقدير وقت التأكيد التقريبي للشبكة الفعلية اللي هتتسحب بيها
                         // العملة من منصة الشراء - دي الخطوة اللي بتحمل مخاطرة حركة السعر
                         val transferNetworkName = r.buyWalletStatus?.networkName ?: WithdrawalFees.networkNameFor(coin.id)

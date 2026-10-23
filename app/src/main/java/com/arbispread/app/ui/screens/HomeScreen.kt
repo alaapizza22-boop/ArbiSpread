@@ -42,11 +42,9 @@ import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import com.arbispread.app.ads.AdsManager
 import com.arbispread.app.model.FREE_COIN_LIMIT
 import com.arbispread.app.model.STABLECOIN_IDS
 import com.arbispread.app.ui.Strings
-import com.arbispread.app.ui.components.BannerAdView
 import com.arbispread.app.ui.components.CoinSpreadCard
 import com.arbispread.app.ui.components.LockedCoinCard
 import com.arbispread.app.ui.theme.AccentCyan
@@ -58,7 +56,6 @@ import com.arbispread.app.viewmodel.ArbitrageUiState
 @Composable
 fun HomeScreen(
     state: ArbitrageUiState,
-    adsManager: AdsManager,
     onUnlockRequested: () -> Unit,
     onRefreshClick: () -> Unit,
     onSettingsClick: () -> Unit,
@@ -99,7 +96,6 @@ fun HomeScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BgDeep)
             )
         },
-        bottomBar = { BannerAdView() }
     ) { padding ->
         Column(
             modifier = Modifier
