@@ -108,6 +108,10 @@ object Strings {
         "wallet_disabled" to "🚫 موقوف",
         "wallet_unverifiable" to "⚠️ غير قابل للتحقق من API عام — تأكد يدوياً",
         "wallet_blocked_banner" to "⚠️ الصفقة غير قابلة للتنفيذ حالياً — إيداع أو سحب موقوف على إحدى المنصتين",
+        "common_network_title" to "شبكة التحويل المشتركة",
+        "common_network_found" to "✅ متأكدين إن هذه الشبكة شغالة سحباً من منصة الشراء وإيداعاً في منصة البيع",
+        "common_network_not_found" to "⚠️ لم نجد شبكة واحدة مؤكد إنها شغالة على الجانبين (سحب من الشراء + إيداع في البيع) — راجع الشبكات يدوياً على المنصتين قبل التحويل",
+        "common_network_unavailable" to "⚠️ بيانات الشبكات لكل منصة غير متاحة بالكامل — تأكد يدوياً إن المنصتين بتدعموا نفس الشبكة قبل التحويل",
         "retry" to "إعادة المحاولة",
         "close" to "إغلاق",
     )
@@ -205,6 +209,10 @@ object Strings {
         "wallet_disabled" to "🚫 Suspended",
         "wallet_unverifiable" to "⚠️ Not checkable via public API — verify manually",
         "wallet_blocked_banner" to "⚠️ Trade not executable right now — deposit or withdrawal suspended on one exchange",
+        "common_network_title" to "Shared transfer network",
+        "common_network_found" to "✅ Confirmed working for withdrawal from the buy exchange and deposit on the sell exchange",
+        "common_network_not_found" to "⚠️ No single network confirmed working on both sides (withdraw from buy + deposit on sell) — check networks manually on both exchanges before transferring",
+        "common_network_unavailable" to "⚠️ Per-network data isn't fully available for both exchanges — verify manually that both support the same network before transferring",
         "retry" to "Retry",
         "close" to "Close",
     )

@@ -334,7 +334,13 @@ object ExchangeClients {
                     val chain = chains.getJSONObject(c)
                     val name = chain.optString("chainName").takeIf { it.isNotBlank() } ?: continue
                     val fee = chain.optString("withdrawalMinFee").toDoubleOrNull() ?: continue
-                    options.add(NetworkFeeOption(name, fee, chain.optBoolean("isWithdrawEnabled", true)))
+                    options.add(
+                        NetworkFeeOption(
+                            name, fee,
+                            withdrawEnabled = chain.optBoolean("isWithdrawEnabled", true),
+                            depositEnabled = chain.optBoolean("isDepositEnabled", true),
+                        )
+                    )
                 }
             }
             val cheapest = cheapestEnabledNetwork(options)
@@ -361,13 +367,14 @@ object ExchangeClients {
             val options = mutableListOf<NetworkFeeOption>()
             for (i in 0 until arr.length()) {
                 val chain = arr.getJSONObject(i)
-                if (!chain.optBoolean("is_deposit_disabled", false)) depositEnabled = true
+                val depositEnabledHere = !chain.optBoolean("is_deposit_disabled", false)
+                if (depositEnabledHere) depositEnabled = true
                 val withdrawEnabledHere = !chain.optBoolean("is_withdraw_disabled", false)
                 if (withdrawEnabledHere) anyWithdrawEnabled = true
                 // الحقل أحياناً مسمى withdraw_fix_fee في رد هذا الـ Endpoint
                 val fee = chain.optString("withdraw_fix_fee").toDoubleOrNull()
                 val name = chain.optString("chain").takeIf { it.isNotBlank() }
-                if (fee != null && name != null) options.add(NetworkFeeOption(name, fee, withdrawEnabledHere))
+                if (fee != null && name != null) options.add(NetworkFeeOption(name, fee, withdrawEnabledHere, depositEnabledHere))
             }
             val cheapest = cheapestEnabledNetwork(options)
             WalletNetworkStatus(
@@ -404,9 +411,10 @@ object ExchangeClients {
                     val name = chain.optString("chain").takeIf { it.isNotBlank() } ?: continue
                     val fee = chain.optString("withdrawFee").toDoubleOrNull() ?: continue
                     val withdrawEnabledHere = chain.optString("withdrawable") == "true"
-                    if (chain.optString("rechargeable") == "true") depositEnabled = true
+                    val depositEnabledHere = chain.optString("rechargeable") == "true"
+                    if (depositEnabledHere) depositEnabled = true
                     if (withdrawEnabledHere) anyWithdrawEnabled = true
-                    options.add(NetworkFeeOption(name, fee, withdrawEnabledHere))
+                    options.add(NetworkFeeOption(name, fee, withdrawEnabledHere, depositEnabledHere))
                 }
             }
             val cheapest = cheapestEnabledNetwork(options)
@@ -467,7 +475,13 @@ object ExchangeClients {
                         val net = networks.getJSONObject(n)
                         val name = net.optString("network").takeIf { it.isNotBlank() } ?: continue
                         val fee = net.optString("withdrawFee").toDoubleOrNull() ?: continue
-                        networkOptions.add(NetworkFeeOption(name, fee, net.optBoolean("withdrawEnable", true)))
+                        networkOptions.add(
+                            NetworkFeeOption(
+                                name, fee,
+                                withdrawEnabled = net.optBoolean("withdrawEnable", true),
+                                depositEnabled = net.optBoolean("depositEnable", true),
+                            )
+                        )
                     }
                 }
                 val cheapest = cheapestEnabledNetwork(networkOptions)
@@ -520,9 +534,10 @@ object ExchangeClients {
                         val name = chain.optString("chain").takeIf { it.isNotBlank() } ?: continue
                         val fee = chain.optString("withdrawFee").toDoubleOrNull() ?: continue
                         val chainWithdrawEnabled = chain.optString("chainWithdraw") == "1"
-                        if (chain.optString("chainDeposit") == "1") depositEnabled = true
+                        val chainDepositEnabled = chain.optString("chainDeposit") == "1"
+                        if (chainDepositEnabled) depositEnabled = true
                         if (chainWithdrawEnabled) withdrawEnabled = true
-                        options.add(NetworkFeeOption(name, fee, chainWithdrawEnabled))
+                        options.add(NetworkFeeOption(name, fee, chainWithdrawEnabled, chainDepositEnabled))
                     }
                 }
                 val cheapest = cheapestEnabledNetwork(options)
@@ -576,7 +591,7 @@ object ExchangeClients {
                 val canWd = row.optBoolean("canWd", true)
                 val canDep = row.optBoolean("canDep", true)
                 if (chainName != null && fee != null) {
-                    optionsByCoin.getOrPut(coinId) { mutableListOf() }.add(NetworkFeeOption(chainName, fee, canWd))
+                    optionsByCoin.getOrPut(coinId) { mutableListOf() }.add(NetworkFeeOption(chainName, fee, canWd, canDep))
                 }
                 depositByCoin[coinId] = (depositByCoin[coinId] ?: false) || canDep
                 withdrawByCoin[coinId] = (withdrawByCoin[coinId] ?: false) || canWd
@@ -620,7 +635,13 @@ object ExchangeClients {
                         val net = networks.getJSONObject(n)
                         val name = net.optString("network").takeIf { it.isNotBlank() } ?: continue
                         val fee = net.optString("withdrawFee").toDoubleOrNull() ?: continue
-                        networkOptions.add(NetworkFeeOption(name, fee, net.optBoolean("withdrawEnable", true)))
+                        networkOptions.add(
+                            NetworkFeeOption(
+                                name, fee,
+                                withdrawEnabled = net.optBoolean("withdrawEnable", true),
+                                depositEnabled = net.optBoolean("depositEnable", true),
+                            )
+                        )
                     }
                 }
                 val cheapest = cheapestEnabledNetwork(networkOptions)

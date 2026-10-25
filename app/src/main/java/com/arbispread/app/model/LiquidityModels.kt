@@ -21,6 +21,9 @@ data class NetworkFeeOption(
     /** رسم السحب بوحدة العملة نفسها على الشبكة دي تحديداً */
     val withdrawFeeNative: Double,
     val withdrawEnabled: Boolean,
+    /** هل الإيداع شغال على نفس الشبكة دي تحديداً على نفس المنصة - null لو المنصة مرجعتش
+     * حالة الإيداع لكل شبكة لوحدها (بترجع حالة واحدة عامة للعملة كلها بس) */
+    val depositEnabled: Boolean? = null,
 )
 
 /**
@@ -61,10 +64,35 @@ data class LiquidityCheckResult(
     val errorMessage: String?,
     val checkedAtMillis: Long,
 ) {
+    /**
+     * بتفحص حسب اتجاه التحويل الفعلي: السحب من منصة الشراء (عشان تحوّل العملة بعد
+     * الشراء)، والإيداع في منصة البيع (عشان العملة توصل وتتباع). لو أي خطوة من الاتنين
+     * موقوفة فعلياً، الصفقة مش قابلة للتنفيذ حتى لو الأرقام رابحة على الورق.
+     */
     val isBlockedByWallet: Boolean
         get() {
-            val buyBlocked = buyWalletStatus?.depositEnabled == false
-            val sellBlocked = sellWalletStatus?.withdrawEnabled == false
+            val buyBlocked = buyWalletStatus?.withdrawEnabled == false
+            val sellBlocked = sellWalletStatus?.depositEnabled == false
             return buyBlocked || sellBlocked
+        }
+
+    /**
+     * بتدوّر على أرخص شبكة شغالة (سحب شغال من منصة الشراء + إيداع شغال في منصة البيع
+     * بنفس الاسم) - دي الشبكة الوحيدة الصح فعلياً تستخدمها في التحويل. لو مفيش تطابق
+     * واضح (بيانات الإيداع لكل شبكة مش متاحة من المنصة)، بترجع null والواجهة لازم
+     * توضح إنه لازم تتأكد يدوياً قبل التحويل.
+     */
+    val commonNetwork: NetworkFeeOption?
+        get() {
+            val buyOptions = buyWalletStatus?.availableNetworks ?: return null
+            val sellOptions = sellWalletStatus?.availableNetworks ?: return null
+            val sellByName = sellOptions.associateBy { it.networkName.trim().uppercase() }
+            return buyOptions
+                .filter { it.withdrawEnabled }
+                .filter { buyOpt ->
+                    val sellOpt = sellByName[buyOpt.networkName.trim().uppercase()] ?: return@filter false
+                    sellOpt.depositEnabled != false
+                }
+                .minByOrNull { it.withdrawFeeNative }
         }
 }

@@ -112,9 +112,13 @@ fun LiquidityCheckDialog(
                             )
                         }
 
-                        // تقدير وقت التأكيد التقريبي للشبكة الفعلية اللي هتتسحب بيها
-                        // العملة من منصة الشراء - دي الخطوة اللي بتحمل مخاطرة حركة السعر
-                        val transferNetworkName = r.buyWalletStatus?.networkName ?: WithdrawalFees.networkNameFor(coin.id)
+                        // الشبكة اللي هتتحول بيها العملة فعلياً لازم تكون شغالة على الجانبين
+                        // مع بعض: سحب من منصة الشراء + إيداع في منصة البيع. لو عرفنا نطابق
+                        // شبكة مشتركة مؤكدة، نستخدمها هي (مش أرخص شبكة سحب لوحدها بس)
+                        val commonNetwork = r.commonNetwork
+                        val transferNetworkName = commonNetwork?.networkName
+                            ?: r.buyWalletStatus?.networkName
+                            ?: WithdrawalFees.networkNameFor(coin.id)
                         val transferRange = NetworkTransferTime.estimateFor(transferNetworkName)
                         Text(
                             Strings.t("transfer_time_estimate_label") +
@@ -143,14 +147,58 @@ fun LiquidityCheckDialog(
                             )
                         }
 
+                        // ملخص الشبكة المشتركة المؤكدة (سحب من الشراء + إيداع في البيع بنفس
+                        // الاسم) - ده أهم حاجة قبل أي تحويل فعلي، لأن التحويل على شبكة
+                        // غلط بين منصتين بيضيع العملة فعلياً من غير رجعة
+                        val bothSidesHaveNetworkData = r.buyWalletStatus?.availableNetworks != null &&
+                            r.sellWalletStatus?.availableNetworks != null
+                        Column(modifier = Modifier.padding(top = 12.dp)) {
+                            Text(
+                                Strings.t("common_network_title"),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextSecondary
+                            )
+                            when {
+                                commonNetwork != null -> {
+                                    Text(
+                                        "${commonNetwork.networkName}: " +
+                                            String.format(Locale.US, "%.8f", commonNetwork.withdrawFeeNative),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = ProfitGreen
+                                    )
+                                    Text(
+                                        Strings.t("common_network_found"),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextSecondary
+                                    )
+                                }
+                                bothSidesHaveNetworkData -> {
+                                    Text(
+                                        Strings.t("common_network_not_found"),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = LossRed
+                                    )
+                                }
+                                else -> {
+                                    Text(
+                                        Strings.t("common_network_unavailable"),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = WarnAmber
+                                    )
+                                }
+                            }
+                        }
+
                         Text(
                             Strings.t("wallet_status_title"),
                             style = MaterialTheme.typography.labelMedium,
                             color = TextSecondary,
                             modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
                         )
-                        WalletStatusRow(buyExchange, r.buyWalletStatus, isDepositSide = true)
-                        WalletStatusRow(sellExchange, r.sellWalletStatus, isDepositSide = false)
+                        // منصة الشراء: العملة بعد الشراء لازم "تتسحب" منها عشان تتحول لمنصة
+                        // البيع. منصة البيع: العملة القادمة لازم "تتودع" فيها عشان تتباع
+                        WalletStatusRow(buyExchange, r.buyWalletStatus, isDepositSide = false)
+                        WalletStatusRow(sellExchange, r.sellWalletStatus, isDepositSide = true)
                     }
                 }
             }
