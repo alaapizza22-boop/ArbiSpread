@@ -304,11 +304,12 @@ object ExchangeClients {
 
     // ---------------------------------------------------------------------
     // حالة الإيداع/السحب (Wallet Network Status)
-    // **تنبيه صريح**: Binance و Bybit و OKX ماعندهمش Endpoint عام (من غير مفتاح API
-    // شخصي موقّع) بيرجّع حالة الإيداع/السحب الفعلية - دي بيانات محتاجة توثيق بحسابك،
+    // **تنبيه صريح**: Binance و Bybit و OKX وMEXC ماعندهمش Endpoint عام (من غير مفتاح
+    // API شخصي موقّع) بيرجّع حالة الإيداع/السحب الفعلية - دي بيانات محتاجة توثيق بحسابك،
     // والتطبيق متعمد إنه ميطلبش مفتاح منك عشان يفضل بعيد عن حسابك وفلوسك. فبالنسبالهم
-    // التطبيق بيرجّع isVerifiable=false (مش "متاح" ولا "موقوف" - ببساطة "مش معروف").
-    // KuCoin و Gate.io بس عندهم Endpoint عام حقيقي، فبيترجعلهم isVerifiable=true.
+    // التطبيق بيرجّع isVerifiable=false (مش "متاح" ولا "موقوف" - ببساطة "مش معروف") لحد
+    // ما المستخدم يدخّل مفتاحه الشخصي (اختياري). KuCoin وGate.io وBitget بس عندهم
+    // Endpoint عام حقيقي، فبيترجعلهم isVerifiable=true من غير أي مفتاح خالص.
     // ---------------------------------------------------------------------
 
     /**
@@ -381,11 +382,52 @@ object ExchangeClients {
         } catch (_: Exception) { null }
     }
 
-    /** بيرجّع دالة فحص حالة المحفظة الصحيحة حسب اسم المنصة - أو null (غير قابل للتحقق) للمنصات الثلاث التانية لو مفيش مفتاح شخصي مُفعّل */
+    /**
+     * Bitget: `/api/v2/spot/public/coins` عام بالكامل (من غير مفتاح، زي KuCoin/Gate.io
+     * بالظبط) - بيرجّع كل العملات في نداء واحد، كل عملة معاها مصفوفة "chains" فيها
+     * withdrawFee وrechargeable/withdrawable لكل شبكة.
+     */
+    suspend fun fetchBitgetWalletStatus(coinId: String): WalletNetworkStatus? = withContext(Dispatchers.IO) {
+        val body = get("https://api.bitget.com/api/v2/spot/public/coins?coinId=$coinId") ?: return@withContext null
+        try {
+            val data = JSONObject(body).optJSONArray("data") ?: return@withContext null
+            val coinEntry = (0 until data.length())
+                .map { data.getJSONObject(it) }
+                .firstOrNull { it.optString("coin").equals(coinId, ignoreCase = true) } ?: return@withContext null
+            val chains = coinEntry.optJSONArray("chains")
+            var depositEnabled = false
+            var anyWithdrawEnabled = false
+            val options = mutableListOf<NetworkFeeOption>()
+            if (chains != null) {
+                for (c in 0 until chains.length()) {
+                    val chain = chains.getJSONObject(c)
+                    val name = chain.optString("chain").takeIf { it.isNotBlank() } ?: continue
+                    val fee = chain.optString("withdrawFee").toDoubleOrNull() ?: continue
+                    val withdrawEnabledHere = chain.optString("withdrawable") == "true"
+                    if (chain.optString("rechargeable") == "true") depositEnabled = true
+                    if (withdrawEnabledHere) anyWithdrawEnabled = true
+                    options.add(NetworkFeeOption(name, fee, withdrawEnabledHere))
+                }
+            }
+            val cheapest = cheapestEnabledNetwork(options)
+            WalletNetworkStatus(
+                exchangeName = "Bitget",
+                depositEnabled = depositEnabled,
+                withdrawEnabled = anyWithdrawEnabled,
+                isVerifiable = true,
+                networkName = cheapest?.networkName,
+                withdrawFeeNative = cheapest?.withdrawFeeNative,
+                availableNetworks = options.sortedBy { it.withdrawFeeNative }.ifEmpty { null },
+            )
+        } catch (_: Exception) { null }
+    }
+
+    /** بيرجّع دالة فحص حالة المحفظة الصحيحة حسب اسم المنصة - أو null (غير قابل للتحقق) للمنصات اللي معندهاش Endpoint عام ومفيش مفتاح شخصي مُفعّل */
     suspend fun fetchWalletStatusFor(exchangeName: String, coinId: String): WalletNetworkStatus? = when (exchangeName) {
         "KuCoin" -> fetchKucoinWalletStatus(coinId)
         "Gate.io" -> fetchGateioWalletStatus(coinId)
-        else -> null // Binance/Bybit/OKX/Bitget/MEXC: مفيش Endpoint عام موثّق - استخدم fetchWalletStatusWithKey لو المستخدم معاه مفتاح شخصي (متاح حالياً لـ Binance/Bybit/OKX بس)
+        "Bitget" -> fetchBitgetWalletStatus(coinId)
+        else -> null // Binance/Bybit/OKX/MEXC: مفيش Endpoint عام موثّق - استخدم fetchWalletStatusWithKey لو المستخدم معاه مفتاح شخصي
     }
 
     // ---------------------------------------------------------------------
@@ -555,6 +597,47 @@ object ExchangeClients {
         result
     }
 
+    /** MEXC: /api/v3/capital/config/getall - موقّع، نفس شكل رد Binance بالظبط (networkList لكل عملة) */
+    suspend fun fetchMexcWithdrawalInfo(apiKey: String, secretKey: String): Map<String, WalletNetworkStatus> = withContext(Dispatchers.IO) {
+        val result = HashMap<String, WalletNetworkStatus>()
+        try {
+            val timestamp = System.currentTimeMillis()
+            val query = "timestamp=$timestamp&recvWindow=10000"
+            val signature = Signing.hmacSha256Hex(secretKey, query)
+            val url = "https://api.mexc.com/api/v3/capital/config/getall?$query&signature=$signature"
+            val body = getWithHeaders(url, mapOf("X-MEXC-APIKEY" to apiKey)) ?: return@withContext emptyMap()
+            val arr = JSONArray(body)
+            for (i in 0 until arr.length()) {
+                val coin = arr.getJSONObject(i)
+                val coinId = coin.optString("coin")
+                if (coinId.isEmpty()) continue
+                val networks = coin.optJSONArray("networkList")
+                val depositEnabled = coin.optBoolean("depositAllEnable", true)
+                val withdrawEnabled = coin.optBoolean("withdrawAllEnable", true)
+                val networkOptions = mutableListOf<NetworkFeeOption>()
+                if (networks != null) {
+                    for (n in 0 until networks.length()) {
+                        val net = networks.getJSONObject(n)
+                        val name = net.optString("network").takeIf { it.isNotBlank() } ?: continue
+                        val fee = net.optString("withdrawFee").toDoubleOrNull() ?: continue
+                        networkOptions.add(NetworkFeeOption(name, fee, net.optBoolean("withdrawEnable", true)))
+                    }
+                }
+                val cheapest = cheapestEnabledNetwork(networkOptions)
+                result[coinId] = WalletNetworkStatus(
+                    exchangeName = "MEXC",
+                    depositEnabled = depositEnabled,
+                    withdrawEnabled = withdrawEnabled,
+                    isVerifiable = true,
+                    networkName = cheapest?.networkName,
+                    withdrawFeeNative = cheapest?.withdrawFeeNative,
+                    availableNetworks = networkOptions.sortedBy { it.withdrawFeeNative }.ifEmpty { null },
+                )
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
     /** دالة موحّدة: بتختار النداء الصح حسب المنصة لو المستخدم معاه مفتاح شخصي مُفعّل لها */
     suspend fun fetchWalletStatusWithKey(exchangeName: String, key: ExchangeApiKey): Map<String, WalletNetworkStatus> {
         if (!key.isConfigured) return emptyMap()
@@ -562,6 +645,7 @@ object ExchangeClients {
             "Binance" -> fetchBinanceWithdrawalInfo(key.apiKey, key.secretKey)
             "Bybit" -> fetchBybitWithdrawalInfo(key.apiKey, key.secretKey)
             "OKX" -> fetchOkxWithdrawalInfo(key.apiKey, key.secretKey, key.passphrase)
+            "MEXC" -> fetchMexcWithdrawalInfo(key.apiKey, key.secretKey)
             else -> emptyMap()
         }
     }

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.arbispread.app.data.ApiKeyStore
+import com.arbispread.app.data.FavoritesStore
 import com.arbispread.app.data.FeeConfig
 import com.arbispread.app.data.PersistenceHistoryStore
 import com.arbispread.app.data.PriceRepository
@@ -37,7 +38,9 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
 
     private var feeConfig: FeeConfig = FeeConfig.load(application)
 
-    private val _uiState = MutableStateFlow(ArbitrageUiState(feeConfig = feeConfig))
+    private val _uiState = MutableStateFlow(
+        ArbitrageUiState(feeConfig = feeConfig, favoriteCoinIds = FavoritesStore.load(application))
+    )
     val uiState: StateFlow<ArbitrageUiState> = _uiState.asStateFlow()
 
     init {
@@ -146,6 +149,16 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
     fun setFilterProfitableOnly(enabled: Boolean) {
         _uiState.update { it.copy(filterProfitableOnly = enabled) }
     }
+
+    fun setFavoritesOnly(enabled: Boolean) {
+        _uiState.update { it.copy(favoritesOnly = enabled) }
+    }
+
+    /** بيقلب حالة عملة في المفضلة (يضيفها لو مش موجودة، يشيلها لو موجودة) وبيحفظ على طول */
+    fun toggleFavorite(coinId: String) {
+        val updated = FavoritesStore.toggle(getApplication<Application>(), coinId)
+        _uiState.update { it.copy(favoriteCoinIds = updated) }
+    }
 }
 
 data class ArbitrageUiState(
@@ -157,4 +170,6 @@ data class ArbitrageUiState(
     val capitalUsd: Double = 1000.0,
     val filterProfitableOnly: Boolean = false,
     val feeConfig: FeeConfig = FeeConfig(),
+    val favoriteCoinIds: Set<String> = emptySet(),
+    val favoritesOnly: Boolean = false,
 )

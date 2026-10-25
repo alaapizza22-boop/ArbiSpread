@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -60,6 +62,8 @@ fun CoinSpreadCard(
     result: CoinSpreadResult,
     capitalUsd: Double,
     persistence: CoinPersistenceInfo? = null,
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val breakdown = result.feeBreakdown(capitalUsd)
@@ -90,9 +94,18 @@ fun CoinSpreadCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(result.coin.id, style = MaterialTheme.typography.titleLarge, color = AccentCyan)
-                    Text(result.coin.displayName, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onToggleFavorite, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            contentDescription = Strings.t("favorite_toggle"),
+                            tint = if (isFavorite) WarnAmber else TextSecondary
+                        )
+                    }
+                    Column {
+                        Text(result.coin.id, style = MaterialTheme.typography.titleLarge, color = AccentCyan)
+                        Text(result.coin.displayName, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    }
                 }
 
                 if (result.isAvailable) {

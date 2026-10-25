@@ -61,6 +61,8 @@ fun HomeScreen(
     onSettingsClick: () -> Unit,
     onCapitalChange: (Double) -> Unit,
     onFilterChange: (Boolean) -> Unit,
+    onFavoritesOnlyChange: (Boolean) -> Unit,
+    onToggleFavorite: (String) -> Unit,
 ) {
     var capitalText by remember { mutableStateOf(state.capitalUsd.toInt().toString()) }
     // تاب "الكل" بيعرض كل العملات زي ما هو دايماً، وتاب "الستيبل كوين" بيفلتر على
@@ -156,6 +158,18 @@ fun HomeScreen(
                         colors = SwitchDefaults.colors(checkedTrackColor = AccentCyan)
                     )
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(Strings.t("favorites_only"), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+                    Switch(
+                        checked = state.favoritesOnly,
+                        onCheckedChange = onFavoritesOnlyChange,
+                        colors = SwitchDefaults.colors(checkedTrackColor = AccentCyan)
+                    )
+                }
 
                 // آخر وقت وصلت فيه بيانات فعلية من المنصات - بيتحدّث تلقائياً كل 20 ثانية
                 // أو عند الضغط على زرار التحديث اليدوي، عشان يبان واضح إن الأسعار مش لحظة الفتح بس
@@ -206,17 +220,20 @@ fun HomeScreen(
                     state.results
                 }
 
-                // بنرتّب دايماً من الأعلى ربحاً للأقل (العملات غير القابلة للحساب
-                // بتنزل لآخر القايمة) - عشان أفضل فرصة فعلية تبقى أول حاجة يشوفها
-                // المستخدم، مش بترتيب ثابت حسب قايمة العملات الأصلية
-                val sortedResults = scopedResults.sortedByDescending { it.netProfitPercent(state.capitalUsd) ?: Double.NEGATIVE_INFINITY }
-                val filteredResults = if (state.filterProfitableOnly) {
-                    sortedResults.filter { (it.netProfitPercent(state.capitalUsd) ?: -1.0) > 0.0 }
+                // من غير ترتيب حسب الربح - العملات بتفضل بنفس ترتيب القايمة الأصلية
+                // (زرار "اظهار العملات المربحه فقط" كفاية لفلترة الفرص الرابحة)
+                val profitFiltered = if (state.filterProfitableOnly) {
+                    scopedResults.filter { (it.netProfitPercent(state.capitalUsd) ?: -1.0) > 0.0 }
                 } else {
-                    sortedResults
+                    scopedResults
+                }
+                val filteredResults = if (state.favoritesOnly) {
+                    profitFiltered.filter { it.coin.id in state.favoriteCoinIds }
+                } else {
+                    profitFiltered
                 }
 
-                if (selectedTab == 1 && filteredResults.isEmpty()) {
+                if (selectedTab == 1 && filteredResults.isEmpty() && !state.favoritesOnly) {
                     Column(
                         modifier = Modifier.fillMaxSize(),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -224,6 +241,21 @@ fun HomeScreen(
                     ) {
                         Text(
                             Strings.t("stablecoins_empty"),
+                            color = TextSecondary,
+                            modifier = Modifier.padding(horizontal = 24.dp)
+                        )
+                    }
+                    return@Box
+                }
+
+                if (state.favoritesOnly && filteredResults.isEmpty()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            Strings.t("favorites_empty"),
                             color = TextSecondary,
                             modifier = Modifier.padding(horizontal = 24.dp)
                         )
@@ -243,7 +275,9 @@ fun HomeScreen(
                             CoinSpreadCard(
                                 result,
                                 capitalUsd = state.capitalUsd,
-                                persistence = state.persistenceByCoinId[result.coin.id]
+                                persistence = state.persistenceByCoinId[result.coin.id],
+                                isFavorite = result.coin.id in state.favoriteCoinIds,
+                                onToggleFavorite = { onToggleFavorite(result.coin.id) }
                             )
                         } else {
                             LockedCoinCard(onUnlockClick = onUnlockRequested)

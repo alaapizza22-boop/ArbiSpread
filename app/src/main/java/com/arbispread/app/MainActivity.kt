@@ -40,6 +40,8 @@ class MainActivity : ComponentActivity() {
                         onSettingsClick = { screen = Screen.SETTINGS },
                         onCapitalChange = { viewModel.setCapital(it) },
                         onFilterChange = { viewModel.setFilterProfitableOnly(it) },
+                        onFavoritesOnlyChange = { viewModel.setFavoritesOnly(it) },
+                        onToggleFavorite = { viewModel.toggleFavorite(it) },
                     )
 
                     Screen.SETTINGS -> SettingsScreen(
