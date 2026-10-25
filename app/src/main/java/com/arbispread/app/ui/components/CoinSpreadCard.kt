@@ -64,6 +64,11 @@ fun CoinSpreadCard(
     persistence: CoinPersistenceInfo? = null,
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
+    /** أقصى مبلغ قابل للتنفيذ من المعاينة التلقائية اللايف - null لو اتفحصت وفشلت،
+     * وmissing key (بمعنى القيمة الافتراضية null هنا) معناها "لسه متفحصتش" */
+    liveLiquidityUsd: Double? = null,
+    /** true لو العملة دي ضمن العملات اللي بتتفحص لايف دلوقتي (يعني نعرض السطر أصلاً) */
+    showLiveLiquidity: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val breakdown = result.feeBreakdown(capitalUsd)
@@ -232,6 +237,20 @@ fun CoinSpreadCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = WarnAmber,
                         modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+
+                // معاينة سيولة لايف تلقائية - بتظهر بس للفرص اللي ضمن المعاينة التلقائية
+                // (أول عدد محدود من الفرص الرابحة وقت ما فلتر "عرض الفرص الرابحة فقط"
+                // مفعّل) - رقم تقريبي سريع، الفحص الكامل (زرار تحت) لسه هو الأدق
+                if (showLiveLiquidity) {
+                    Text(
+                        text = Strings.t("live_liquidity_label") + " " +
+                            if (liveLiquidityUsd != null) "$" + String.format(Locale.US, "%.0f", liveLiquidityUsd)
+                            else "—",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if ((liveLiquidityUsd ?: 0.0) > 0) ProfitGreen else TextSecondary,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
 

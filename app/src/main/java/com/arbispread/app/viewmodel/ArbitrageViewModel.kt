@@ -6,11 +6,15 @@ import androidx.lifecycle.viewModelScope
 import com.arbispread.app.data.ApiKeyStore
 import com.arbispread.app.data.FavoritesStore
 import com.arbispread.app.data.FeeConfig
+import com.arbispread.app.data.LiquidityRepository
 import com.arbispread.app.data.PersistenceHistoryStore
 import com.arbispread.app.data.PriceRepository
 import com.arbispread.app.model.CoinPersistenceInfo
 import com.arbispread.app.model.CoinSpreadResult
 import com.arbispread.app.model.DEFAULT_COINS
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +23,14 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private const val REFRESH_INTERVAL_MS = 20_000L
+
+/** فاصل تحديث معاينة السيولة اللايف - أبطأ بكتير من تحديث الأسعار (20 ثانية) عشان
+ * ده نداءات عمق دفتر طلبات إضافية لكل عملة، فمحتاجين نحترم حدود الطلبات أكتر */
+private const val LIVE_LIQUIDITY_INTERVAL_MS = 45_000L
+
+/** أقصى عدد عملات بنفحص سيولتها اللايف في نفس الدورة - عشان نفضل بعيد عن حدود الطلبات
+ * حتى لو كان فيه فرص رابحة كتير ظاهرة في نفس اللحظة */
+private const val LIVE_LIQUIDITY_CAP = 8
 
 /** أقصى مدة بنحتفظ بتاريخ الاستمرارية خلالها - أبعد من كده مش محتاجينه، وبيتمسح تلقائياً */
 private const val PERSISTENCE_WINDOW_MILLIS = 60 * 60 * 1000L
@@ -48,6 +60,7 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
         // التحميل - عشان مينفعش عملة تتحسب "مستمرة" من وقت قديم جداً قبل ما حتى نحدّث
         trimPersistenceHistory(System.currentTimeMillis())
         startAutoRefresh()
+        startLiveLiquidityLoop()
     }
 
     private fun startAutoRefresh() {
@@ -57,6 +70,52 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
                 kotlinx.coroutines.delay(REFRESH_INTERVAL_MS)
             }
         }
+    }
+
+    /**
+     * معاينة سيولة لايف تلقائية - شغالة بس وقت ما زرار "عرض الفرص الرابحة فقط" مفعّل،
+     * ومحدودة بعدد قليل من العملات ([LIVE_LIQUIDITY_CAP]) وبفاصل زمني أبطأ بكتير من
+     * تحديث الأسعار العادي ([LIVE_LIQUIDITY_INTERVAL_MS]) - عشان نديك فكرة سريعة عن
+     * الفرص اللي سيولتها فعلاً كفاية، من غير ما نضرب حدود الطلبات بتاعة المنصات.
+     * بتستخدم عمق دفتر الطلبات العام بس (من غير مفتاح شخصي) عشان تفضل خفيفة.
+     */
+    private fun startLiveLiquidityLoop() {
+        viewModelScope.launch {
+            while (isActive) {
+                refreshLiveLiquidity()
+                kotlinx.coroutines.delay(LIVE_LIQUIDITY_INTERVAL_MS)
+            }
+        }
+    }
+
+    private suspend fun refreshLiveLiquidity() {
+        val state = _uiState.value
+        if (!state.filterProfitableOnly) return
+
+        val targets = state.results
+            .filter { (it.netProfitPercent(state.capitalUsd) ?: -1.0) > 0.0 }
+            .mapNotNull { result ->
+                val buyExchange = result.buy?.exchangeName ?: return@mapNotNull null
+                val sellExchange = result.sell?.exchangeName ?: return@mapNotNull null
+                Triple(result.coin, buyExchange, sellExchange)
+            }
+            .take(LIVE_LIQUIDITY_CAP)
+        if (targets.isEmpty()) return
+
+        val updates = coroutineScope {
+            targets.map { (coin, buyExchange, sellExchange) ->
+                async {
+                    val value = try {
+                        LiquidityRepository.quickMaxExecutable(coin, buyExchange, sellExchange)
+                    } catch (e: Exception) {
+                        null
+                    }
+                    coin.id to value
+                }
+            }.awaitAll()
+        }.toMap()
+
+        _uiState.update { it.copy(liveLiquidityByCoinId = it.liveLiquidityByCoinId + updates) }
     }
 
     fun refreshNow() {
@@ -147,7 +206,12 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun setFilterProfitableOnly(enabled: Boolean) {
-        _uiState.update { it.copy(filterProfitableOnly = enabled) }
+        // لو اتقفل الفلتر، نمسح أي سيولة لايف محفوظة فوراً (مش محتاجينها دلوقتي) بدل ما
+        // نستنى لحد الدورة الجاية. لو اتفتح، نبدأ فحص فوري بدل الانتظار لحد 45 ثانية
+        _uiState.update { it.copy(filterProfitableOnly = enabled, liveLiquidityByCoinId = if (enabled) it.liveLiquidityByCoinId else emptyMap()) }
+        if (enabled) {
+            viewModelScope.launch { refreshLiveLiquidity() }
+        }
     }
 
     fun setFavoritesOnly(enabled: Boolean) {
@@ -172,4 +236,7 @@ data class ArbitrageUiState(
     val feeConfig: FeeConfig = FeeConfig(),
     val favoriteCoinIds: Set<String> = emptySet(),
     val favoritesOnly: Boolean = false,
+    /** أقصى مبلغ قابل للتنفيذ (سيولة لايف) لكل عملة ظهرت في المعاينة التلقائية - null
+     * معناها "اتفحصت بس فشل الفحص"، مفتاح مش موجود خالص معناه "لسه متفحصتش" */
+    val liveLiquidityByCoinId: Map<String, Double?> = emptyMap(),
 )
