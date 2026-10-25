@@ -54,6 +54,7 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
     var gateio by remember { mutableStateOf(initial.gateio.toString()) }
     var bitget by remember { mutableStateOf(initial.bitget.toString()) }
     var mexc by remember { mutableStateOf(initial.mexc.toString()) }
+    var bingx by remember { mutableStateOf(initial.bingx.toString()) }
     var withdrawalFee by remember { mutableStateOf(initial.withdrawalFeeUsd.toString()) }
     var binanceFuturesTaker by remember { mutableStateOf(initial.binanceFuturesTaker.toString()) }
     var bybitFuturesTaker by remember { mutableStateOf(initial.bybitFuturesTaker.toString()) }
@@ -99,6 +100,7 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
             FeeField("Gate.io", gateio) { gateio = it }
             FeeField("Bitget", bitget) { bitget = it }
             FeeField("MEXC", mexc) { mexc = it }
+            FeeField("BingX", bingx) { bingx = it }
 
             FeeField(Strings.t("withdrawal_fee"), withdrawalFee) { withdrawalFee = it }
             Text(
@@ -117,6 +119,7 @@ fun SettingsScreen(onBack: () -> Unit, onSaved: () -> Unit) {
                         gateio = gateio.toDoubleOrNull() ?: initial.gateio,
                         bitget = bitget.toDoubleOrNull() ?: initial.bitget,
                         mexc = mexc.toDoubleOrNull() ?: initial.mexc,
+                        bingx = bingx.toDoubleOrNull() ?: initial.bingx,
                         withdrawalFeeUsd = withdrawalFee.toDoubleOrNull() ?: initial.withdrawalFeeUsd,
                         // عمولة فيوتشرز الفاندينج اتشالت من الواجهة بعد حذف تبويب الفاندينج،
                         // بنحافظ على القيمة المخزنة زي ما هي من غير ما نعرضها أو نعدّلها

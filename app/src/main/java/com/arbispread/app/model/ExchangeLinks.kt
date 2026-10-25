@@ -20,6 +20,7 @@ object ExchangeLinks {
         "Gate.io" -> "https://www.gate.io/trade/${coinId}_USDT"
         "Bitget" -> "https://www.bitget.com/spot/${coinId}USDT"
         "MEXC" -> "https://www.mexc.com/exchange/${coinId}_USDT"
+        "BingX" -> "https://bingx.com/en-us/spot/${coinId}USDT"
         else -> null
     }
 

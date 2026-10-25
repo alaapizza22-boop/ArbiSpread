@@ -40,7 +40,7 @@ object ApiKeyStore {
     )
 
     /** أسماء المنصات المدعومة بالترتيب اللي بتتعرض بيه في الواجهة */
-    val SUPPORTED_EXCHANGES = listOf("Binance", "Bybit", "OKX", "KuCoin", "Gate.io", "Bitget", "MEXC")
+    val SUPPORTED_EXCHANGES = listOf("Binance", "Bybit", "OKX", "KuCoin", "Gate.io", "Bitget", "MEXC", "BingX")
 
     /** المنصات اللي محتاجة Passphrase إضافي غير API Key وSecret */
     fun requiresPassphrase(exchangeName: String): Boolean =

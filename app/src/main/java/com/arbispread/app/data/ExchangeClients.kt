@@ -165,6 +165,22 @@ object ExchangeClients {
         result
     }
 
+    /** BingX: منصة ثامنة - نفس فكرة Bitget/MEXC (سيولة إضافية). الرمز بصيغة BTC-USDT (بشرطة) مش BTCUSDT */
+    suspend fun fetchBingx(): Map<String, Double> = withContext(Dispatchers.IO) {
+        val body = get("https://open-api.bingx.com/openApi/spot/v1/ticker/24hr") ?: return@withContext emptyMap()
+        val result = HashMap<String, Double>()
+        try {
+            val data = JSONObject(body).optJSONArray("data") ?: return@withContext emptyMap()
+            for (i in 0 until data.length()) {
+                val obj = data.getJSONObject(i)
+                val symbol = obj.optString("symbol")
+                val price = obj.optString("lastPrice").toDoubleOrNull()
+                if (symbol.isNotEmpty() && price != null) result[symbol] = price
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
     // ---------------------------------------------------------------------
     // عمق دفتر الطلبات (Order Book Depth) - بيتسحب عند الطلب بس (مش كل تحديث)
     // عشان ميتجاوزش حدود الطلبات (Rate Limits) بتاعة المنصات. كل دالة بترجع
@@ -274,6 +290,19 @@ object ExchangeClients {
         } catch (_: Exception) { null }
     }
 
+    suspend fun fetchBingxDepth(symbol: String): OrderBookSnapshot? = withContext(Dispatchers.IO) {
+        val body = get("https://open-api.bingx.com/openApi/spot/v1/market/depth?symbol=$symbol&limit=100") ?: return@withContext null
+        try {
+            val data = JSONObject(body).getJSONObject("data")
+            OrderBookSnapshot(
+                exchangeName = "BingX",
+                asks = parseLevels(data.optJSONArray("asks")),
+                bids = parseLevels(data.optJSONArray("bids")),
+                fetchedAtMillis = System.currentTimeMillis(),
+            )
+        } catch (_: Exception) { null }
+    }
+
     /** بيرجّع دالة فحص العمق الصحيحة حسب اسم المنصة - أداة مساعدة لتوحيد الاستدعاء في LiquidityRepository */
     suspend fun fetchDepthFor(exchangeName: String, coin: CoinDef): OrderBookSnapshot? = when (exchangeName) {
         "Binance" -> fetchBinanceDepth(coin.binanceSymbol)
@@ -283,6 +312,7 @@ object ExchangeClients {
         "Gate.io" -> fetchGateioDepth(coin.gateioSymbol)
         "Bitget" -> fetchBitgetDepth(coin.bitgetSymbol)
         "MEXC" -> fetchMexcDepth(coin.mexcSymbol)
+        "BingX" -> fetchBingxDepth(coin.bingxSymbol)
         else -> null
     }
 
@@ -299,13 +329,14 @@ object ExchangeClients {
         "Gate.io" -> fetchGateioDepth(symbol)
         "Bitget" -> fetchBitgetDepth(symbol)
         "MEXC" -> fetchMexcDepth(symbol)
+        "BingX" -> fetchBingxDepth(symbol)
         else -> null
     }
 
     // ---------------------------------------------------------------------
     // حالة الإيداع/السحب (Wallet Network Status)
-    // **تنبيه صريح**: Binance و Bybit و OKX وMEXC ماعندهمش Endpoint عام (من غير مفتاح
-    // API شخصي موقّع) بيرجّع حالة الإيداع/السحب الفعلية - دي بيانات محتاجة توثيق بحسابك،
+    // **تنبيه صريح**: Binance و Bybit و OKX وMEXC وBingX ماعندهمش Endpoint عام (من غير
+    // مفتاح API شخصي موقّع) بيرجّع حالة الإيداع/السحب الفعلية - دي بيانات محتاجة توثيق بحسابك،
     // والتطبيق متعمد إنه ميطلبش مفتاح منك عشان يفضل بعيد عن حسابك وفلوسك. فبالنسبالهم
     // التطبيق بيرجّع isVerifiable=false (مش "متاح" ولا "موقوف" - ببساطة "مش معروف") لحد
     // ما المستخدم يدخّل مفتاحه الشخصي (اختياري). KuCoin وGate.io وBitget بس عندهم
@@ -659,6 +690,56 @@ object ExchangeClients {
         result
     }
 
+    /**
+     * BingX: /openApi/wallets/v1/capital/config/getall (موقّع) - نفس شكل رد Binance/MEXC
+     * بالظبط (networkList لكل عملة). التوقيع هنا مختلف شوية عن باقي المنصات: BingX
+     * بتطلب ترتيب المفاتيح أبجدياً (ASCII) قبل التوقيع - هنا باراميترين بس (recvWindow
+     * وtimestamp) وده أصلاً ترتيبهم الأبجدي الصحيح.
+     */
+    suspend fun fetchBingxWithdrawalInfo(apiKey: String, secretKey: String): Map<String, WalletNetworkStatus> = withContext(Dispatchers.IO) {
+        val result = HashMap<String, WalletNetworkStatus>()
+        try {
+            val timestamp = System.currentTimeMillis()
+            val query = "recvWindow=10000&timestamp=$timestamp"
+            val signature = Signing.hmacSha256Hex(secretKey, query)
+            val url = "https://open-api.bingx.com/openApi/wallets/v1/capital/config/getall?$query&signature=$signature"
+            val body = getWithHeaders(url, mapOf("X-BX-APIKEY" to apiKey)) ?: return@withContext emptyMap()
+            val arr = JSONObject(body).optJSONArray("data") ?: return@withContext emptyMap()
+            for (i in 0 until arr.length()) {
+                val coin = arr.getJSONObject(i)
+                val coinId = coin.optString("coin")
+                if (coinId.isEmpty()) continue
+                val networks = coin.optJSONArray("networkList")
+                var depositEnabled = false
+                var withdrawEnabled = false
+                val networkOptions = mutableListOf<NetworkFeeOption>()
+                if (networks != null) {
+                    for (n in 0 until networks.length()) {
+                        val net = networks.getJSONObject(n)
+                        val name = net.optString("network").takeIf { it.isNotBlank() } ?: continue
+                        val fee = net.optString("withdrawFee").toDoubleOrNull() ?: continue
+                        val depositEnabledHere = net.optBoolean("depositEnable", true)
+                        val withdrawEnabledHere = net.optBoolean("withdrawEnable", true)
+                        if (depositEnabledHere) depositEnabled = true
+                        if (withdrawEnabledHere) withdrawEnabled = true
+                        networkOptions.add(NetworkFeeOption(name, fee, withdrawEnabledHere, depositEnabledHere))
+                    }
+                }
+                val cheapest = cheapestEnabledNetwork(networkOptions)
+                result[coinId] = WalletNetworkStatus(
+                    exchangeName = "BingX",
+                    depositEnabled = depositEnabled,
+                    withdrawEnabled = withdrawEnabled,
+                    isVerifiable = true,
+                    networkName = cheapest?.networkName,
+                    withdrawFeeNative = cheapest?.withdrawFeeNative,
+                    availableNetworks = networkOptions.sortedBy { it.withdrawFeeNative }.ifEmpty { null },
+                )
+            }
+        } catch (_: Exception) { }
+        result
+    }
+
     /** دالة موحّدة: بتختار النداء الصح حسب المنصة لو المستخدم معاه مفتاح شخصي مُفعّل لها */
     suspend fun fetchWalletStatusWithKey(exchangeName: String, key: ExchangeApiKey): Map<String, WalletNetworkStatus> {
         if (!key.isConfigured) return emptyMap()
@@ -667,6 +748,7 @@ object ExchangeClients {
             "Bybit" -> fetchBybitWithdrawalInfo(key.apiKey, key.secretKey)
             "OKX" -> fetchOkxWithdrawalInfo(key.apiKey, key.secretKey, key.passphrase)
             "MEXC" -> fetchMexcWithdrawalInfo(key.apiKey, key.secretKey)
+            "BingX" -> fetchBingxWithdrawalInfo(key.apiKey, key.secretKey)
             else -> emptyMap()
         }
     }
@@ -837,6 +919,23 @@ object ExchangeClients {
         } catch (_: Exception) { null }
     }
 
+    /**
+     * BingX: /openApi/spot/v1/user/commissionRate?symbol=BTC-USDT (موقّع) - takerCommissionRate
+     * نسبة عشرية. BingX بتطلب ترتيب أبجدي (ASCII) للمفاتيح قبل التوقيع - هنا (recvWindow,
+     * symbol, timestamp) ده أصلاً ترتيبهم الصح.
+     */
+    suspend fun fetchBingxTradingFee(apiKey: String, secretKey: String): Double? = withContext(Dispatchers.IO) {
+        try {
+            val timestamp = System.currentTimeMillis()
+            val query = "recvWindow=10000&symbol=BTC-USDT&timestamp=$timestamp"
+            val signature = Signing.hmacSha256Hex(secretKey, query)
+            val url = "https://open-api.bingx.com/openApi/spot/v1/user/commissionRate?$query&signature=$signature"
+            val body = getWithHeaders(url, mapOf("X-BX-APIKEY" to apiKey)) ?: return@withContext null
+            val data = JSONObject(body).optJSONObject("data") ?: return@withContext null
+            data.optString("takerCommissionRate").toDoubleOrNull()?.times(100.0)
+        } catch (_: Exception) { null }
+    }
+
     /** دالة موحّدة: بتختار نداء عمولة التداول الحية الصح حسب المنصة لو المستخدم معاه مفتاح شخصي مُفعّل لها */
     suspend fun fetchTradingFeeWithKey(exchangeName: String, key: ExchangeApiKey): Double? {
         if (!key.isConfigured) return null
@@ -848,6 +947,7 @@ object ExchangeClients {
             "Gate.io" -> fetchGateioTradingFee(key.apiKey, key.secretKey)
             "Bitget" -> fetchBitgetTradingFee(key.apiKey, key.secretKey, key.passphrase)
             "MEXC" -> fetchMexcTradingFee(key.apiKey, key.secretKey)
+            "BingX" -> fetchBingxTradingFee(key.apiKey, key.secretKey)
             else -> null
         }
     }

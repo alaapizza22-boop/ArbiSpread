@@ -15,13 +15,13 @@ data class PriceRefreshResult(
 class PriceRepository(private val coins: List<CoinDef>) {
 
     /**
-     * بيسحب الأسعار من المنصات السبع (كلها أزواج USDT) بالتوازي مرة واحدة بس، وبعدين
+     * بيسحب الأسعار من المنصات الثمانية (كلها أزواج USDT) بالتوازي مرة واحدة بس، وبعدين
      * يبني مقارنة السبريد بين المنصات لكل عملة.
      */
     suspend fun refreshAll(
         fees: FeeConfig,
         /** مفاتيح المستخدم الشخصية المفعّلة (لو موجودة) - بتتستخدم لجلب رسوم سحب وعمولة
-         * تداول حقيقية بنداء موقّع واحد بس لكل منصة (مش لكل عملة)، لأي منصة من السبعة
+         * تداول حقيقية بنداء موقّع واحد بس لكل منصة (مش لكل عملة)، لأي منصة من الثمانية
          * المستخدم مدخّل لها مفتاح مُفعّل */
         apiKeys: Map<String, ExchangeApiKey> = emptyMap(),
     ): PriceRefreshResult = coroutineScope {
@@ -32,6 +32,7 @@ class PriceRepository(private val coins: List<CoinDef>) {
         val gateioDeferred = async { ExchangeClients.fetchGateio() }
         val bitgetDeferred = async { ExchangeClients.fetchBitget() }
         val mexcDeferred = async { ExchangeClients.fetchMexc() }
+        val bingxDeferred = async { ExchangeClients.fetchBingx() }
 
         val binance = binanceDeferred.await()
         val bybit = bybitDeferred.await()
@@ -40,6 +41,7 @@ class PriceRepository(private val coins: List<CoinDef>) {
         val gateio = gateioDeferred.await()
         val bitget = bitgetDeferred.await()
         val mexc = mexcDeferred.await()
+        val bingx = bingxDeferred.await()
 
         // رسوم سحب حقيقية - نداء موقّع واحد بس لكل منصة من الثلاثة دي لو المستخدم معاه
         // مفتاح شخصي مُفعّل لها (مش لكل عملة على حدة، عشان نحترم حدود الطلبات). رسوم
@@ -136,6 +138,11 @@ class PriceRepository(private val coins: List<CoinDef>) {
                     val (withdrawalFee, withdrawalVerified) = withdrawalFeeFor("MEXC", it)
                     val (fee, feeVerified) = tradingFeeFor("MEXC", fees.mexc)
                     add(ExchangeQuote("MEXC", it, fee, withdrawalFee, withdrawalVerified, feeVerified))
+                }
+                bingx[coin.bingxSymbol]?.let {
+                    val (withdrawalFee, withdrawalVerified) = withdrawalFeeFor("BingX", it)
+                    val (fee, feeVerified) = tradingFeeFor("BingX", fees.bingx)
+                    add(ExchangeQuote("BingX", it, fee, withdrawalFee, withdrawalVerified, feeVerified))
                 }
             }
 

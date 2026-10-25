@@ -7,10 +7,10 @@ package com.arbispread.app.model
  * ملاحظة: Coinbase اتشال من المقارنة لأنه بيسعّر بالـ USD مش USDT، والفرق
  * بين الاتنين مش ثابت (USDT ممكن يتداول عند premium أو discount بسيط عن الدولار
  * الحقيقي حسب العرض والطلب)، وده كان بيطلّع فروق سعر وهمية (زي 18%) مش حقيقية.
- * المنصات السبعة هنا (Binance, Bybit, OKX, KuCoin, Gate.io, Bitget, MEXC) بتسعّر
- * بالـ USDT فالمقارنة بينهم دلوقتي "تفاحة بتفاحة" فعلاً. Bitget وMEXC انضافوا بعدين
- * كمرشحين لسيولة/فرص إضافية مقارنة بالخمسة الأساسيين - اتأكد إن عمولاتهم في شاشة
- * الإعدادات مظبوطة على حسابك قبل أي قرار فعلي.
+ * المنصات الثمانية هنا (Binance, Bybit, OKX, KuCoin, Gate.io, Bitget, MEXC, BingX)
+ * بتسعّر بالـ USDT فالمقارنة بينهم دلوقتي "تفاحة بتفاحة" فعلاً. Bitget وMEXC وBingX
+ * انضافوا بعدين كمرشحين لسيولة/فرص إضافية مقارنة بالخمسة الأساسيين - اتأكد إن
+ * عمولاتهم في شاشة الإعدادات مظبوطة على حسابك قبل أي قرار فعلي.
  */
 data class CoinDef(
     val id: String,              // رمز مختصر للعرض، مثل BTC
@@ -22,6 +22,7 @@ data class CoinDef(
     val gateioSymbol: String,    // مثل BTC_USDT
     val bitgetSymbol: String,    // مثل BTCUSDT
     val mexcSymbol: String,      // مثل BTCUSDT
+    val bingxSymbol: String,     // مثل BTC-USDT
 )
 
 /**
@@ -40,6 +41,7 @@ private fun coin(base: String, name: String): CoinDef = CoinDef(
     gateioSymbol = "${base}_USDT",
     bitgetSymbol = "${base}USDT",
     mexcSymbol = "${base}USDT",
+    bingxSymbol = "$base-USDT",
 )
 
 /** رموز العملات المستقرة (Stablecoins) المعروضة في قسمها الخاص بالواجهة - مش شاملة USDT نفسها لأنها عملة الأساس (Quote) اللي بيتقاس بيها كل حاجة تانية، فمفيش معنى لمقارنتها بنفسها */

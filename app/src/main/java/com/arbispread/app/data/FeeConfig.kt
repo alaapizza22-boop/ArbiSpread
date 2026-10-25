@@ -13,6 +13,7 @@ import android.content.Context
  *   - Gate.io : 0.20% (Spot, Regular user)
  *   - Bitget  : 0.10% (Spot, Regular user)
  *   - MEXC    : 0.20% (Spot, Regular user - MEXC أحياناً بيطلع عروض 0% مؤقتة، اتأكد من حسابك)
+ *   - BingX   : 0.10% (Spot, Regular user)
  *
  * ملحوظتين مهمتين لازم تكونا واضحتين:
  * 1. العمولة الفعلية بتختلف حسب مستوى حسابك (VIP tiers حسب حجم تداولك الشهري) وخصومات
@@ -32,6 +33,7 @@ data class FeeConfig(
     var gateio: Double = 0.20,
     var bitget: Double = 0.10,
     var mexc: Double = 0.20,
+    var bingx: Double = 0.10,
 
     /**
      * عمولة سحب شبكة التحويل (Network Withdrawal Fee) بالدولار - لازم تدخلها إنت يدوياً
@@ -66,6 +68,7 @@ data class FeeConfig(
         "Gate.io" -> gateio
         "Bitget" -> bitget
         "MEXC" -> mexc
+        "BingX" -> bingx
         else -> 0.1
     }
 
@@ -88,6 +91,7 @@ data class FeeConfig(
                 gateio = prefs.getFloat("fee_gateio", 0.20f).toDouble(),
                 bitget = prefs.getFloat("fee_bitget", 0.10f).toDouble(),
                 mexc = prefs.getFloat("fee_mexc", 0.20f).toDouble(),
+                bingx = prefs.getFloat("fee_bingx", 0.10f).toDouble(),
                 withdrawalFeeUsd = prefs.getFloat("fee_withdrawal_usd", 0.0f).toDouble(),
                 binanceFuturesTaker = prefs.getFloat("fee_binance_futures_taker", 0.05f).toDouble(),
                 bybitFuturesTaker = prefs.getFloat("fee_bybit_futures_taker", 0.055f).toDouble(),
@@ -104,6 +108,7 @@ data class FeeConfig(
                 .putFloat("fee_gateio", config.gateio.toFloat())
                 .putFloat("fee_bitget", config.bitget.toFloat())
                 .putFloat("fee_mexc", config.mexc.toFloat())
+                .putFloat("fee_bingx", config.bingx.toFloat())
                 .putFloat("fee_withdrawal_usd", config.withdrawalFeeUsd.toFloat())
                 .putFloat("fee_binance_futures_taker", config.binanceFuturesTaker.toFloat())
                 .putFloat("fee_bybit_futures_taker", config.bybitFuturesTaker.toFloat())
