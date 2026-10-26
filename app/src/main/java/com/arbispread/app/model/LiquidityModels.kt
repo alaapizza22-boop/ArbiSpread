@@ -86,13 +86,43 @@ data class LiquidityCheckResult(
         get() {
             val buyOptions = buyWalletStatus?.availableNetworks ?: return null
             val sellOptions = sellWalletStatus?.availableNetworks ?: return null
-            val sellByName = sellOptions.associateBy { it.networkName.trim().uppercase() }
+            // المطابقة بالمعيار التقني (Canonical) مش بالاسم النصي الحرفي - عشان "TRC20"
+            // من منصة و"TRON" أو "TRX" من منصة تانية يتطابقوا صح، مع إنهم نفس الشبكة
+            // فعلياً. راجع توثيق [NetworkNormalization] لحدود دقة المطابقة دي.
+            val sellByCanonical = sellOptions.associateBy { NetworkNormalization.canonicalize(it.networkName) }
             return buyOptions
                 .filter { it.withdrawEnabled }
                 .filter { buyOpt ->
-                    val sellOpt = sellByName[buyOpt.networkName.trim().uppercase()] ?: return@filter false
+                    val sellOpt = sellByCanonical[NetworkNormalization.canonicalize(buyOpt.networkName)] ?: return@filter false
                     sellOpt.depositEnabled != false
                 }
                 .minByOrNull { it.withdrawFeeNative }
         }
 }
+
+/** حالة التحقق من الشبكة المشتركة لفرصة واحدة في المعاينة اللايف التلقائية */
+enum class LiveNetworkStatus {
+    /** لقينا شبكة سحب/إيداع مشتركة مؤكدة شغالة على الجانبين، والربح محسوب على رسمها الحقيقي */
+    CONFIRMED,
+    /** بيانات الشبكات متاحة من المنصتين بس مفيش شبكة واحدة شغالة عليهم مع بعض - الفرصة غير قابلة للتنفيذ فعلياً */
+    NO_COMMON_NETWORK,
+    /** الإيداع أو السحب موقوف بالكامل على إحدى المنصتين */
+    WALLET_BLOCKED,
+    /** بيانات الشبكة مش متاحة بالكامل من المنصتين (منصة محتاجة مفتاح شخصي مش مُدخل، أو فشل الفحص) - متعرفش نحكم */
+    DATA_UNAVAILABLE,
+}
+
+/**
+ * نتيجة المعاينة التلقائية اللايف لفرصة واحدة - بتجمع أقصى مبلغ قابل للتنفيذ من السيولة
+ * + حالة الشبكة المشتركة + تأثيرها الفعلي على صافي الربح، بدل الاعتماد على رسوم السحب
+ * الثابتة/المرجعية بس زي الحساب الأساسي المعروض على كل كارت.
+ */
+data class LiveOpportunityCheck(
+    val maxExecutableUsd: Double?,
+    val networkStatus: LiveNetworkStatus,
+    val commonNetworkName: String?,
+    val commonNetworkFeeUsd: Double?,
+    /** صافي الربح بعد تطبيق رسم أرخص شبكة مشتركة فعلية (بدل الرسم الثابت/المرجعي) -
+     * null إلا لو [networkStatus] كانت CONFIRMED وأمكن حساب تفصيل الربح */
+    val netProfitAfterCommonNetworkUsd: Double?,
+)

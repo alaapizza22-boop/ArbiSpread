@@ -278,8 +278,7 @@ fun HomeScreen(
                                 persistence = state.persistenceByCoinId[result.coin.id],
                                 isFavorite = result.coin.id in state.favoriteCoinIds,
                                 onToggleFavorite = { onToggleFavorite(result.coin.id) },
-                                liveLiquidityUsd = state.liveLiquidityByCoinId[result.coin.id],
-                                showLiveLiquidity = state.liveLiquidityByCoinId.containsKey(result.coin.id)
+                                liveCheck = state.liveLiquidityByCoinId[result.coin.id]
                             )
                         } else {
                             LockedCoinCard(onUnlockClick = onUnlockRequested)

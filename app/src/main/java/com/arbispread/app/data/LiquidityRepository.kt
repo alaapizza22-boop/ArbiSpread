@@ -88,28 +88,6 @@ object LiquidityRepository {
     }
 
     /**
-     * نسخة خفيفة من [checkExecution]: بترجع أقصى مبلغ قابل للتنفيذ بس (من عمق دفتر
-     * الطلبات العام)، من غير فحص حالة المحفظة خالص - عشان كده مفيش نداءات موقّعة
-     * بمفتاح شخصي هنا أبداً. مستخدمة في المعاينة التلقائية للسيولة على الفرص الرابحة
-     * (فحص متكرر كل فترة لعدد محدود من العملات)، عشان نقلل عدد النداءات الموقّعة
-     * قدر الإمكان ونفضل بعيد عن حدود الطلبات (Rate Limits).
-     */
-    suspend fun quickMaxExecutable(
-        coin: CoinDef,
-        buyExchange: String,
-        sellExchange: String,
-        maxSlippagePercent: Double = DEFAULT_MAX_SLIPPAGE_PERCENT,
-    ): Double? = coroutineScope {
-        val buyDepthDeferred = async { ExchangeClients.fetchDepthFor(buyExchange, coin) }
-        val sellDepthDeferred = async { ExchangeClients.fetchDepthFor(sellExchange, coin) }
-        val buyDepth = buyDepthDeferred.await() ?: return@coroutineScope null
-        val sellDepth = sellDepthDeferred.await() ?: return@coroutineScope null
-        val (buyExecutableUsd, _) = executableUsdOnAskSide(buyDepth, maxSlippagePercent)
-        val (sellExecutableUsd, _) = executableUsdOnBidSide(sellDepth, maxSlippagePercent)
-        if (buyExecutableUsd != null && sellExecutableUsd != null) minOf(buyExecutableUsd, sellExecutableUsd) else null
-    }
-
-    /**
      * بيحسب أقصى مبلغ بالدولار تقدر تشتري بيه من جانب الـ Asks (عروض البيع) من غير
      * ما يتجاوز متوسط سعر التنفيذ (VWAP) حد الانزلاق المسموح به فوق أفضل سعر (Best Ask).
      * بيرجع (المبلغ, هل العمق المتاح في اللقطة خلص قبل ما نوصل لحد الانزلاق).

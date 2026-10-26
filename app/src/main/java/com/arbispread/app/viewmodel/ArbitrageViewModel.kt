@@ -12,6 +12,8 @@ import com.arbispread.app.data.PriceRepository
 import com.arbispread.app.model.CoinPersistenceInfo
 import com.arbispread.app.model.CoinSpreadResult
 import com.arbispread.app.model.DEFAULT_COINS
+import com.arbispread.app.model.LiveNetworkStatus
+import com.arbispread.app.model.LiveOpportunityCheck
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -73,11 +75,13 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /**
-     * معاينة سيولة لايف تلقائية - شغالة بس وقت ما زرار "عرض الفرص الرابحة فقط" مفعّل،
-     * ومحدودة بعدد قليل من العملات ([LIVE_LIQUIDITY_CAP]) وبفاصل زمني أبطأ بكتير من
-     * تحديث الأسعار العادي ([LIVE_LIQUIDITY_INTERVAL_MS]) - عشان نديك فكرة سريعة عن
-     * الفرص اللي سيولتها فعلاً كفاية، من غير ما نضرب حدود الطلبات بتاعة المنصات.
-     * بتستخدم عمق دفتر الطلبات العام بس (من غير مفتاح شخصي) عشان تفضل خفيفة.
+     * معاينة سيولة + شبكة مشتركة تلقائية - شغالة بس وقت ما زرار "عرض الفرص الرابحة فقط"
+     * مفعّل، ومحدودة بعدد قليل من العملات ([LIVE_LIQUIDITY_CAP]) وبفاصل زمني أبطأ بكتير
+     * من تحديث الأسعار العادي ([LIVE_LIQUIDITY_INTERVAL_MS]) - عشان نديك فكرة سريعة عن
+     * الفرص اللي سيولتها فعلاً كفاية وعندها شبكة سحب/إيداع رخيصة مشتركة، من غير ما نضرب
+     * حدود الطلبات بتاعة المنصات. بتستخدم نفس فحص التنفيذ الكامل اللي في زرار "فحص
+     * السيولة" اليدوي ([LiquidityRepository.checkExecution]) - بما فيه حالة المحافظ،
+     * عشان نقدر نحسب رسم أرخص شبكة مشتركة فعلية بدل الرسم الثابت/المرجعي.
      */
     private fun startLiveLiquidityLoop() {
         viewModelScope.launch {
@@ -94,23 +98,58 @@ class ArbitrageViewModel(application: Application) : AndroidViewModel(applicatio
 
         val targets = state.results
             .filter { (it.netProfitPercent(state.capitalUsd) ?: -1.0) > 0.0 }
-            .mapNotNull { result ->
-                val buyExchange = result.buy?.exchangeName ?: return@mapNotNull null
-                val sellExchange = result.sell?.exchangeName ?: return@mapNotNull null
-                Triple(result.coin, buyExchange, sellExchange)
-            }
+            .filter { it.buy != null && it.sell != null }
             .take(LIVE_LIQUIDITY_CAP)
         if (targets.isEmpty()) return
 
+        // بنحمّل المفاتيح الشخصية (لو موجودة) زي ما بيحصل بالظبط في فحص السيولة اليدوي -
+        // عشان نقدر نجيب شبكات المنصات اللي معندهاش Endpoint عام (Binance/Bybit/OKX/
+        // MEXC/BingX). قراءة محلية خفيفة من غير أي شبكة
+        val application = getApplication<Application>()
+        val apiKeys = ApiKeyStore.SUPPORTED_EXCHANGES.associateWith { ApiKeyStore.load(application, it) }
+
         val updates = coroutineScope {
-            targets.map { (coin, buyExchange, sellExchange) ->
+            targets.map { result ->
                 async {
-                    val value = try {
-                        LiquidityRepository.quickMaxExecutable(coin, buyExchange, sellExchange)
+                    val buyExchange = result.buy!!.exchangeName
+                    val sellExchange = result.sell!!.exchangeName
+                    val check = try {
+                        LiquidityRepository.checkExecution(
+                            result.coin, buyExchange, sellExchange,
+                            buyApiKey = apiKeys[buyExchange], sellApiKey = apiKeys[sellExchange],
+                        )
                     } catch (e: Exception) {
                         null
                     }
-                    coin.id to value
+
+                    val networkDataAvailable = check?.buyWalletStatus?.availableNetworks != null &&
+                        check.sellWalletStatus?.availableNetworks != null
+                    val commonNetwork = check?.commonNetwork
+                    val breakdown = result.feeBreakdown(state.capitalUsd)
+                    val commonNetworkFeeUsd = commonNetwork?.withdrawFeeNative?.times(result.buy!!.price)
+
+                    val networkStatus = when {
+                        check?.isBlockedByWallet == true -> LiveNetworkStatus.WALLET_BLOCKED
+                        commonNetwork != null -> LiveNetworkStatus.CONFIRMED
+                        networkDataAvailable -> LiveNetworkStatus.NO_COMMON_NETWORK
+                        else -> LiveNetworkStatus.DATA_UNAVAILABLE
+                    }
+
+                    val netProfitAfterCommonNetwork = if (
+                        networkStatus == LiveNetworkStatus.CONFIRMED && breakdown != null && commonNetworkFeeUsd != null
+                    ) {
+                        breakdown.grossProfitUsd - breakdown.buyFeeUsd - breakdown.sellFeeUsd - commonNetworkFeeUsd
+                    } else {
+                        null
+                    }
+
+                    result.coin.id to LiveOpportunityCheck(
+                        maxExecutableUsd = check?.maxExecutableCapitalUsd,
+                        networkStatus = networkStatus,
+                        commonNetworkName = commonNetwork?.networkName,
+                        commonNetworkFeeUsd = commonNetworkFeeUsd,
+                        netProfitAfterCommonNetworkUsd = netProfitAfterCommonNetwork,
+                    )
                 }
             }.awaitAll()
         }.toMap()
@@ -236,7 +275,7 @@ data class ArbitrageUiState(
     val feeConfig: FeeConfig = FeeConfig(),
     val favoriteCoinIds: Set<String> = emptySet(),
     val favoritesOnly: Boolean = false,
-    /** أقصى مبلغ قابل للتنفيذ (سيولة لايف) لكل عملة ظهرت في المعاينة التلقائية - null
-     * معناها "اتفحصت بس فشل الفحص"، مفتاح مش موجود خالص معناه "لسه متفحصتش" */
-    val liveLiquidityByCoinId: Map<String, Double?> = emptyMap(),
+    /** نتيجة المعاينة اللايف (سيولة + شبكة مشتركة) لكل عملة ظهرت في الفحص التلقائي -
+     * مفتاح مش موجود خالص معناه "لسه متفحصتش" */
+    val liveLiquidityByCoinId: Map<String, LiveOpportunityCheck> = emptyMap(),
 )

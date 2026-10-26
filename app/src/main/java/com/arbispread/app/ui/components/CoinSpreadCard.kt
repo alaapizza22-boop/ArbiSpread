@@ -44,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import com.arbispread.app.model.CoinPersistenceInfo
 import com.arbispread.app.model.CoinSpreadResult
 import com.arbispread.app.model.ExchangeLinks
+import com.arbispread.app.model.LiveNetworkStatus
+import com.arbispread.app.model.LiveOpportunityCheck
 import com.arbispread.app.model.MinimumOrderSize
 import com.arbispread.app.model.WithdrawalFees
 import com.arbispread.app.ui.Strings
@@ -64,11 +66,9 @@ fun CoinSpreadCard(
     persistence: CoinPersistenceInfo? = null,
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
-    /** أقصى مبلغ قابل للتنفيذ من المعاينة التلقائية اللايف - null لو اتفحصت وفشلت،
-     * وmissing key (بمعنى القيمة الافتراضية null هنا) معناها "لسه متفحصتش" */
-    liveLiquidityUsd: Double? = null,
-    /** true لو العملة دي ضمن العملات اللي بتتفحص لايف دلوقتي (يعني نعرض السطر أصلاً) */
-    showLiveLiquidity: Boolean = false,
+    /** نتيجة المعاينة التلقائية اللايف (سيولة + شبكة مشتركة) - null لو العملة دي مش
+     * ضمن العملات اللي بتتفحص لايف دلوقتي (يعني متعرضش السطر أصلاً) */
+    liveCheck: LiveOpportunityCheck? = null,
     modifier: Modifier = Modifier,
 ) {
     val breakdown = result.feeBreakdown(capitalUsd)
@@ -240,18 +240,65 @@ fun CoinSpreadCard(
                     )
                 }
 
-                // معاينة سيولة لايف تلقائية - بتظهر بس للفرص اللي ضمن المعاينة التلقائية
-                // (أول عدد محدود من الفرص الرابحة وقت ما فلتر "عرض الفرص الرابحة فقط"
-                // مفعّل) - رقم تقريبي سريع، الفحص الكامل (زرار تحت) لسه هو الأدق
-                if (showLiveLiquidity) {
+                // معاينة سيولة + شبكة مشتركة تلقائية - بتظهر بس للفرص اللي ضمن المعاينة
+                // التلقائية (أول عدد محدود من الفرص الرابحة وقت ما فلتر "عرض الفرص
+                // الرابحة فقط" مفعّل). دي نفس فحص التنفيذ الكامل بتاع الزرار تحت، بس
+                // بيتعمل تلقائياً بدل ما تدوس على الزرار بنفسك
+                if (liveCheck != null) {
                     Text(
                         text = Strings.t("live_liquidity_label") + " " +
-                            if (liveLiquidityUsd != null) "$" + String.format(Locale.US, "%.0f", liveLiquidityUsd)
+                            if (liveCheck.maxExecutableUsd != null) "$" + String.format(Locale.US, "%.0f", liveCheck.maxExecutableUsd)
                             else "—",
                         style = MaterialTheme.typography.labelSmall,
-                        color = if ((liveLiquidityUsd ?: 0.0) > 0) ProfitGreen else TextSecondary,
+                        color = if ((liveCheck.maxExecutableUsd ?: 0.0) > 0) ProfitGreen else TextSecondary,
                         modifier = Modifier.padding(top = 8.dp)
                     )
+
+                    when (liveCheck.networkStatus) {
+                        LiveNetworkStatus.CONFIRMED -> {
+                            Text(
+                                text = Strings.t("live_common_network_label") + " " + liveCheck.commonNetworkName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                            if (liveCheck.netProfitAfterCommonNetworkUsd != null) {
+                                val afterNet = liveCheck.netProfitAfterCommonNetworkUsd
+                                Text(
+                                    text = Strings.t("live_net_profit_after_network_label") + " " +
+                                        (if (afterNet >= 0) "+" else "") + "$" + String.format(Locale.US, "%.2f", afterNet),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (afterNet >= 0) ProfitGreen else LossRed,
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                        LiveNetworkStatus.NO_COMMON_NETWORK -> {
+                            Text(
+                                text = Strings.t("live_no_common_network"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = LossRed,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        LiveNetworkStatus.WALLET_BLOCKED -> {
+                            Text(
+                                text = Strings.t("live_wallet_blocked"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = LossRed,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                        LiveNetworkStatus.DATA_UNAVAILABLE -> {
+                            Text(
+                                text = Strings.t("live_network_data_unavailable"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = WarnAmber,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
                 }
 
                 // زرار فحص السيولة الحية وحالة المحافظ - بيتسحب عند الطلب بس (مش تلقائي لكل عملة)
