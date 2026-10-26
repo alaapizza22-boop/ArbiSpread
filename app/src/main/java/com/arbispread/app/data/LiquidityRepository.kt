@@ -22,6 +22,12 @@ object LiquidityRepository {
         buyExchange: String,
         sellExchange: String,
         maxSlippagePercent: Double = DEFAULT_MAX_SLIPPAGE_PERCENT,
+        /** رأس المال اللي المستخدم ناوي ينفذ بيه فعلياً - بيتستخدم عشان نحسب متوسط سعر
+         * التنفيذ الحقيقي (VWAP) عند المبلغ ده بالذات (مش بس أقصى مبلغ ممكن عند حد
+         * الانزلاق)، فنقدر نورّي "الربح الحقيقي المتوقع" مبني على نفس عمق السجل اللي
+         * بيحسب منه أقصى مبلغ قابل للتنفيذ - مش على السعر اللحظي السريع (Ticker) اللي
+         * بيتجاهل تماماً إن الكمية عند أفضل سعر ممكن تكون ضئيلة جداً */
+        requestedCapitalUsd: Double? = null,
         /** مفتاح المستخدم الشخصي (لو مُدخل ومُفعّل) لمنصة الشراء/البيع - بيتستخدم بس لو
          * المنصة دي معندهاش Endpoint عام (Binance/Bybit/OKX)، عشان نجيب حالة محفظة
          * ورسم سحب حقيقيين بدل "غير محقق" */
@@ -50,6 +56,9 @@ object LiquidityRepository {
                 sellWalletStatus = sellWallet,
                 errorMessage = "تعذر سحب دفتر الطلبات من إحدى المنصتين - حاول تاني",
                 checkedAtMillis = System.currentTimeMillis(),
+                requestedCapitalUsd = requestedCapitalUsd,
+                buyVwapPrice = null,
+                sellVwapPrice = null,
             )
         }
 
@@ -59,6 +68,12 @@ object LiquidityRepository {
         val maxExecutable = if (buyExecutableUsd != null && sellExecutableUsd != null) {
             minOf(buyExecutableUsd, sellExecutableUsd)
         } else null
+
+        // متوسط سعر التنفيذ الحقيقي (VWAP) عند رأس المال اللي المستخدم فعلاً ناوي ينفذ
+        // بيه - ده اللي المفروض يتحسب منه "الربح الحقيقي"، مش السعر اللحظي السريع
+        // (Ticker). null لو عمق السجل مش كفاية يغطي المبلغ المطلوب بالكامل
+        val buyVwap = requestedCapitalUsd?.let { vwapPriceForUsd(buyDepth.asks.sortedBy { l -> l.price }, it) }
+        val sellVwap = requestedCapitalUsd?.let { vwapPriceForUsd(sellDepth.bids.sortedByDescending { l -> l.price }, it) }
 
         LiquidityCheckResult(
             coinId = coin.id,
@@ -71,7 +86,35 @@ object LiquidityRepository {
             sellWalletStatus = sellWallet,
             errorMessage = null,
             checkedAtMillis = System.currentTimeMillis(),
+            requestedCapitalUsd = requestedCapitalUsd,
+            buyVwapPrice = buyVwap,
+            sellVwapPrice = sellVwap,
         )
+    }
+
+    /**
+     * بيحسب متوسط سعر التنفيذ الفعلي (VWAP) لو حاولت تنفّذ بالظبط [targetUsd] دولار على
+     * مستويات السجل المرتبة دي (Asks للشراء، Bids للبيع) - من غير أي حد انزلاق، لأن
+     * الهدف هنا "إيه السعر الحقيقي اللي هتاخده فعلاً" مش "لحد فين آمن أنفذ". بترجع null
+     * لو العمق المتاح في اللقطة أقل من [targetUsd] (معرفناش نكمل الحساب بدقة).
+     */
+    private fun vwapPriceForUsd(levels: List<com.arbispread.app.model.OrderBookLevel>, targetUsd: Double): Double? {
+        if (targetUsd <= 0.0) return null
+        var remainingUsd = targetUsd
+        var totalQuantity = 0.0
+        for (level in levels) {
+            val levelUsd = level.price * level.quantity
+            if (levelUsd >= remainingUsd) {
+                totalQuantity += remainingUsd / level.price
+                remainingUsd = 0.0
+                break
+            }
+            totalQuantity += level.quantity
+            remainingUsd -= levelUsd
+        }
+        if (remainingUsd > 0.0) return null // العمق المتاح في اللقطة مش كفاية يغطي المبلغ كامل
+        if (totalQuantity <= 0.0) return null
+        return targetUsd / totalQuantity
     }
 
     /**

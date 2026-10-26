@@ -46,6 +46,14 @@ fun LiquidityCheckDialog(
     buyExchange: String,
     sellExchange: String,
     capitalUsd: Double,
+    /** عمولة Taker% لمنصة الشراء والبيع ورسم السحب بالدولار - نفس المصادر اللي بيتحسب
+     * منها الربح الظاهر على الكارت أصلاً ([com.arbispread.app.model.FeeBreakdown])، عشان
+     * نحسب "الربح الحقيقي" هنا بنفس العمولات بس بسعر تنفيذ حقيقي من عمق السجل بدل السعر
+     * اللحظي السريع */
+    buyFeePercent: Double,
+    sellFeePercent: Double,
+    withdrawalFeeUsd: Double,
+    isWithdrawalFeeVerified: Boolean,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -59,7 +67,11 @@ fun LiquidityCheckDialog(
         // لو المنصة دي معندهاش Endpoint عام أصلاً (Binance/Bybit/OKX)
         val buyKey = ApiKeyStore.load(context, buyExchange)
         val sellKey = ApiKeyStore.load(context, sellExchange)
-        result = LiquidityRepository.checkExecution(coin, buyExchange, sellExchange, buyApiKey = buyKey, sellApiKey = sellKey)
+        result = LiquidityRepository.checkExecution(
+            coin, buyExchange, sellExchange,
+            requestedCapitalUsd = capitalUsd,
+            buyApiKey = buyKey, sellApiKey = sellKey,
+        )
         isLoading = false
     }
 
@@ -110,6 +122,60 @@ fun LiquidityCheckDialog(
                                 color = WarnAmber,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
+                        }
+
+                        // الربح الحقيقي المتوقع لو نفذت بنفس رأس المال ده بالظبط - محسوب
+                        // من متوسط سعر التنفيذ الفعلي (VWAP) من عمق السجل، مش السعر
+                        // اللحظي السريع الظاهر في القايمة الرئيسية
+                        Column(modifier = Modifier.padding(top = 14.dp)) {
+                            Text(
+                                Strings.t("real_profit_title") + " ($" +
+                                    String.format(Locale.US, "%.0f", capitalUsd) + "):",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = TextSecondary
+                            )
+                            val realBreakdown = r.realProfitBreakdown(buyFeePercent, sellFeePercent, withdrawalFeeUsd)
+                            if (realBreakdown == null) {
+                                Text(
+                                    Strings.t("real_profit_unavailable"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = WarnAmber
+                                )
+                            } else {
+                                Text(
+                                    "$" + String.format(Locale.US, "%.2f", realBreakdown.netProfitUsd) +
+                                        " (" + String.format(Locale.US, "%.2f", realBreakdown.netProfitPercent) + "%)",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = if (realBreakdown.netProfitUsd > 0) ProfitGreen else LossRed
+                                )
+                                Text(
+                                    Strings.t("real_profit_buy_price") + " $" +
+                                        String.format(Locale.US, "%.6f", realBreakdown.buyVwapPrice) +
+                                        " · " + Strings.t("real_profit_sell_price") + " $" +
+                                        String.format(Locale.US, "%.6f", realBreakdown.sellVwapPrice),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextSecondary
+                                )
+                                Text(
+                                    Strings.t("real_profit_fees_note") + ": " +
+                                        Strings.t("real_profit_gross") + " $" +
+                                        String.format(Locale.US, "%.2f", realBreakdown.grossProfitUsd) +
+                                        " − " + Strings.t("fees") + " $" +
+                                        String.format(Locale.US, "%.2f", realBreakdown.buyFeeUsd + realBreakdown.sellFeeUsd) +
+                                        " − " + Strings.t("real_profit_withdrawal") + " $" +
+                                        String.format(Locale.US, "%.2f", realBreakdown.withdrawalFeeUsd),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextSecondary
+                                )
+                                if (!isWithdrawalFeeVerified) {
+                                    Text(
+                                        Strings.t("fee_not_verified_warning"),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = WarnAmber,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                            }
                         }
 
                         // الشبكة اللي هتتحول بيها العملة فعلياً لازم تكون شغالة على الجانبين

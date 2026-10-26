@@ -63,7 +63,48 @@ data class LiquidityCheckResult(
     val sellWalletStatus: WalletNetworkStatus?,
     val errorMessage: String?,
     val checkedAtMillis: Long,
+    /** رأس المال اللي اتطلب حساب متوسط سعر تنفيذه الحقيقي - null لو محدش طلب ذلك */
+    val requestedCapitalUsd: Double? = null,
+    /** متوسط سعر الشراء الحقيقي (VWAP) لو نفذت [requestedCapitalUsd] فعلياً من عمق سجل
+     * الطلبات (مش السعر اللحظي السريع) - null لو العمق المتاح مش كفاية أو مفيش طلب */
+    val buyVwapPrice: Double? = null,
+    /** نفس الفكرة لسعر البيع الحقيقي */
+    val sellVwapPrice: Double? = null,
 ) {
+    /**
+     * الربح الحقيقي المتوقع لو نفذت [requestedCapitalUsd] فعلياً - محسوب من متوسط سعر
+     * التنفيذ الحقيقي (VWAP) من عمق السجل، مش من السعر اللحظي السريع (Ticker) اللي
+     * بيتجاهل الانزلاق. null لو العمق مش كفاية يغطي المبلغ أو مفيش بيانات عمولة.
+     */
+    fun realProfitBreakdown(
+        buyFeePercent: Double,
+        sellFeePercent: Double,
+        withdrawalFeeUsd: Double,
+    ): RealProfitBreakdown? {
+        val capital = requestedCapitalUsd ?: return null
+        val buyPrice = buyVwapPrice ?: return null
+        val sellPrice = sellVwapPrice ?: return null
+        if (buyPrice <= 0.0) return null
+
+        val realSpreadPercent = (sellPrice - buyPrice) / buyPrice * 100.0
+        val grossProfitUsd = capital * realSpreadPercent / 100.0
+        val buyFeeUsd = capital * buyFeePercent / 100.0
+        val sellFeeUsd = capital * sellFeePercent / 100.0
+        val netProfitUsd = grossProfitUsd - buyFeeUsd - sellFeeUsd - withdrawalFeeUsd
+
+        return RealProfitBreakdown(
+            capitalUsd = capital,
+            buyVwapPrice = buyPrice,
+            sellVwapPrice = sellPrice,
+            realSpreadPercent = realSpreadPercent,
+            grossProfitUsd = grossProfitUsd,
+            buyFeeUsd = buyFeeUsd,
+            sellFeeUsd = sellFeeUsd,
+            withdrawalFeeUsd = withdrawalFeeUsd,
+            netProfitUsd = netProfitUsd,
+        )
+    }
+
     /**
      * بتفحص حسب اتجاه التحويل الفعلي: السحب من منصة الشراء (عشان تحوّل العملة بعد
      * الشراء)، والإيداع في منصة البيع (عشان العملة توصل وتتباع). لو أي خطوة من الاتنين
@@ -98,6 +139,27 @@ data class LiquidityCheckResult(
                 }
                 .minByOrNull { it.withdrawFeeNative }
         }
+}
+
+/**
+ * تفصيل الربح الحقيقي المتوقع، محسوب من متوسط سعر التنفيذ الفعلي (VWAP) من عمق سجل
+ * الطلبات نفسه اللي بيحسب منه زرار "فحص السيولة" أقصى مبلغ قابل للتنفيذ - مش من السعر
+ * اللحظي السريع (Ticker) اللي بيظهر في الشاشة الرئيسية وبيتجاهل الانزلاق تماماً.
+ */
+data class RealProfitBreakdown(
+    val capitalUsd: Double,
+    val buyVwapPrice: Double,
+    val sellVwapPrice: Double,
+    /** فرق السعر الحقيقي % محسوب من متوسطي التنفيذ الفعليين، مش من أفضل سعر بس */
+    val realSpreadPercent: Double,
+    val grossProfitUsd: Double,
+    val buyFeeUsd: Double,
+    val sellFeeUsd: Double,
+    val withdrawalFeeUsd: Double,
+    val netProfitUsd: Double,
+) {
+    val netProfitPercent: Double
+        get() = if (capitalUsd > 0.0) (netProfitUsd / capitalUsd) * 100.0 else 0.0
 }
 
 /** حالة التحقق من الشبكة المشتركة لفرصة واحدة في المعاينة اللايف التلقائية */

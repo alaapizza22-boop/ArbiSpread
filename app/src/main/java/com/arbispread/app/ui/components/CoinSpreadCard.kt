@@ -322,6 +322,10 @@ fun CoinSpreadCard(
                         buyExchange = result.buy!!.exchangeName,
                         sellExchange = result.sell!!.exchangeName,
                         capitalUsd = capitalUsd,
+                        buyFeePercent = breakdown?.buyFeePercent ?: result.buy!!.takerFeePercent,
+                        sellFeePercent = breakdown?.sellFeePercent ?: result.sell!!.takerFeePercent,
+                        withdrawalFeeUsd = breakdown?.withdrawalFeeUsd ?: result.buy!!.withdrawalFeeUsd,
+                        isWithdrawalFeeVerified = breakdown?.isWithdrawalFeeVerified ?: result.buy!!.isWithdrawalFeeVerified,
                         onDismiss = { showLiquidityDialog = false }
                     )
                 }
